@@ -122,7 +122,7 @@ set(NGX_C_FILES src/core/nginx.c
         src/http/modules/ngx_http_upstream_random_module.c
         src/http/modules/ngx_http_upstream_keepalive_module.c
         src/http/modules/ngx_http_upstream_zone_module.c
-        objs/ngx_modules.c)
+        cobjs/ngx_modules.c)
 
 set(NGX_INC_DIR src/core
         src/event
@@ -130,7 +130,7 @@ set(NGX_INC_DIR src/core
         src/os/unix
         src/http
         src/http/modules
-        objs)
+        cobjs)
 
 add_executable(nginx_nacos ${NGX_C_FILES} ${NGX_H_FILES})
 target_include_directories(nginx_nacos PRIVATE ${NGX_INC_DIR})

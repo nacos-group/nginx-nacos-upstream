@@ -3,6 +3,8 @@ project(nginx_nacos C)
 
 set(CMAKE_C_STANDARD 90)
 
+set(CMAKE_C_FLAGS "-Werror -Wreturn-type")
+
 set(NGX_C_FILES src/core/nginx.c
         src/core/ngx_log.c
         src/core/ngx_palloc.c
@@ -122,7 +124,7 @@ set(NGX_C_FILES src/core/nginx.c
         src/http/modules/ngx_http_upstream_random_module.c
         src/http/modules/ngx_http_upstream_keepalive_module.c
         src/http/modules/ngx_http_upstream_zone_module.c
-        cobjs/ngx_modules.c)
+        )
 
 set(NGX_INC_DIR src/core
         src/event
@@ -131,6 +133,15 @@ set(NGX_INC_DIR src/core
         src/http
         src/http/modules
         cobjs)
+
+set(NACOS YES)
+
+if (NACOS)
+    list(APPEND NGX_INC_DIR modules/nacos)
+    list(APPEND NGX_C_FILES modules/nacos/ngx_nacos_module.c modules/nacos/ngx_http_nacos_module.c)
+endif ()
+
+list(APPEND NGX_C_FILES cobjs/ngx_modules.c)
 
 add_executable(nginx_nacos ${NGX_C_FILES} ${NGX_H_FILES})
 target_include_directories(nginx_nacos PRIVATE ${NGX_INC_DIR})

@@ -49,3 +49,6 @@
 #define NGX_HAVE_SYS_VFS_H  1
 #endif
 
+#ifndef NGX_HAVE_NACOS
+#define NGX_HAVE_NACOS 1
+#endif

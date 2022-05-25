@@ -14,7 +14,11 @@
 typedef struct {
     ngx_str_t data_id;
     ngx_str_t group;
-    ngx_array_t addrs; // ngx_addr_t t
+    ngx_shm_zone_t *zone;
+    ngx_slab_pool_t *sh;
+    ngx_uint_t *version;
+    ngx_atomic_t *wrlock;
+    char *addrs; // [uint bytes_len][uint number][uint name_length][name_length name][uint sock_len][sock_len sock]....
 } ngx_nacos_key;
 
 typedef struct {
@@ -31,6 +35,7 @@ typedef struct {
     ngx_str_t udp_ip;
     ngx_str_t udp_bind;
     size_t key_pool_size;
+    size_t key_zone_size;
     ngx_log_t *error_log;
 
     ngx_listening_t *udp_listen;

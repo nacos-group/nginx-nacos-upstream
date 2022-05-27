@@ -12,19 +12,23 @@
 #define NGX_NACOS_MAIN_CONF 0x02000000
 
 typedef struct {
-    ngx_str_t data_id;
-    ngx_str_t group;
-    ngx_shm_zone_t *zone;
-    ngx_slab_pool_t *sh;
-    ngx_uint_t *version;
-    ngx_atomic_t *wrlock;
-    char *addrs; // [uint bytes_len][uint number][uint name_length][name_length name][uint sock_len][sock_len sock]....
-} ngx_nacos_key;
+    ngx_atomic_t wrlock;
+    ngx_uint_t version;
+    char *addrs;// [uint bytes_len][uint number][uint name_length][name_length name][uint sock_len][sock_len sock]....
+} ngx_nacos_key_ctx_t;
 
 typedef struct {
     ngx_str_t data_id;
     ngx_str_t group;
-    ngx_array_t *out_addrs;
+    ngx_shm_zone_t *zone;
+    ngx_slab_pool_t *sh;
+    ngx_nacos_key_ctx_t *ctx;
+} ngx_nacos_key_t;
+
+typedef struct {
+    ngx_str_t data_id;
+    ngx_str_t group;
+    ngx_nacos_key_t **key_ptr;
 } ngx_nacos_sub_t;
 
 typedef struct {
@@ -36,6 +40,7 @@ typedef struct {
     ngx_str_t udp_bind;
     size_t key_pool_size;
     size_t key_zone_size;
+    size_t udp_pool_size;
     ngx_log_t *error_log;
 
     ngx_listening_t *udp_listen;
@@ -46,6 +51,27 @@ typedef struct {
 ngx_nacos_main_conf_t *ngx_nacos_get_main_conf(ngx_conf_t *cf);
 
 ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub);
+
+static ngx_inline ngx_flag_t
+nax_nacos_addrs_change(ngx_nacos_key_t *key, const ngx_uint_t version) {
+    ngx_uint_t new_version;
+    ngx_nacos_key_ctx_t *ctx;
+
+    ctx = key->ctx;
+    if (key->sh) {
+        ngx_rwlock_rlock(&ctx->wrlock);
+    }
+    new_version = ctx->version;
+    if (key->sh) {
+        ngx_rwlock_unlock(&ctx->wrlock);
+    }
+    if (new_version != version) {
+        return 1;
+    }
+    return 0;
+}
+
+ngx_int_t nax_nacos_get_addrs(ngx_nacos_key_t *key, ngx_uint_t *version, ngx_array_t *out_addrs);
 
 #define nacos_key_eq(a, b) ((a).data_id.len == (b).data_id.len \
             && ngx_strncmp((a).data_id.data, (b).data_id.data, (a).data_id.len) == 0 \

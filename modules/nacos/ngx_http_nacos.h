@@ -22,8 +22,8 @@ typedef struct {
 
 typedef struct {
     ngx_http_upstream_srv_conf_t *uscf;
-    ngx_http_upstream_init_pt origin_init_upstream;
-    void *origin_data;
+    ngx_http_upstream_init_pt original_init_upstream;
+    ngx_http_upstream_init_peer_pt original_init_peer;
     ngx_http_nacos_conf_t *ncf;
 } ngx_http_nacos_srv_conf_t;
 

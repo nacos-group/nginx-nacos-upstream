@@ -5,6 +5,14 @@
 #include <ngx_nacos.h>
 #include <ngx_http_nacos.h>
 
+typedef struct {
+    ngx_pool_t *pool;
+    ngx_nacos_key_t *key;
+    ngx_uint_t version;
+    ngx_array_t addrs;// ngx_addr_t
+    ngx_http_upstream_srv_conf_t *us;
+} ngx_http_nacos_peers_t;
+
 static void *ngx_http_nacos_create_main_conf(ngx_conf_t *cf);
 
 static ngx_int_t ngx_http_nacos_post_conf(ngx_conf_t *cf);
@@ -14,6 +22,10 @@ static void *ngx_http_nacos_create_srv_conf(ngx_conf_t *cf);
 static char *ngx_http_conf_use_nacos_address(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_int_t ngx_http_nacos_init_upstream(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *us);
+
+static ngx_int_t ngx_http_nacos_init_peers(ngx_http_request_t *r, ngx_http_upstream_srv_conf_t *us);
+
+static ngx_int_t ngx_http_nacos_create_new_us(ngx_http_nacos_peers_t *new_peers, ngx_http_upstream_srv_conf_t *us);
 
 static ngx_http_module_t ngx_http_nacos_module_ctx = {
         NULL,                                  /* preconfiguration */
@@ -135,9 +147,9 @@ static char *ngx_http_conf_use_nacos_address(ngx_conf_t *cf, ngx_command_t *cmd,
     ncfs->group = tmp.group;
     nlcf->ncf = ncfs;
     nlcf->uscf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_upstream_module);
-    nlcf->origin_init_upstream = nlcf->uscf->peer.init_upstream;
-    if (!nlcf->origin_init_upstream) {
-        nlcf->origin_init_upstream = ngx_http_upstream_init_round_robin;
+    nlcf->original_init_upstream = nlcf->uscf->peer.init_upstream;
+    if (!nlcf->original_init_upstream) {
+        nlcf->original_init_upstream = ngx_http_upstream_init_round_robin;
     }
     nlcf->uscf->peer.init_upstream = ngx_http_nacos_init_upstream;
 
@@ -178,26 +190,65 @@ static ngx_int_t ngx_http_nacos_post_conf(ngx_conf_t *cf) {
     return NGX_OK;
 }
 
-static ngx_int_t ngx_http_nacos_init_upstream(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *us) {
-    ngx_nacos_sub_t sub;
-    ngx_array_t addrs;
-    ngx_uint_t i, n;
+u_char *ngx_http_nacos_log_handler(ngx_log_t *log, u_char *buf, size_t len) {
+    ngx_http_nacos_peers_t *peers;
+    u_char * p;
+    if (log->action) {
+        p = ngx_snprintf(buf, len, " while %s", log->action);
+        len -= p - buf;
+    }
+
+    peers = log->data;
+    p = ngx_snprintf(p, len, ": %V:%V", &peers->key->group, &peers->key->data_id);
+    return p;
+}
+
+static ngx_http_nacos_peers_t *ngx_http_nacos_create_peers(ngx_log_t *log) {
+    ngx_pool_t *pool;
+    ngx_http_nacos_peers_t *peers;
+    ngx_log_t *new_log;
+
+    pool = ngx_create_pool(1024, log);
+    if (pool == NULL) {
+        return NULL;
+    }
+
+    new_log = ngx_palloc(pool, sizeof(ngx_log_t));
+    if (new_log == NULL) {
+        ngx_destroy_pool(pool);
+        return NULL;
+    }
+    *new_log = *log;
+    pool->log = new_log;
+
+
+    peers = ngx_pcalloc(pool, sizeof(ngx_http_nacos_peers_t));
+    if (peers == NULL) {
+        ngx_destroy_pool(pool);
+        return NULL;
+    }
+
+    new_log->data = peers;
+    new_log->handler = ngx_http_nacos_log_handler;
+    new_log->action = "nacos update addrs";
+
+    peers->pool = pool;
+    if (ngx_array_init(&peers->addrs, peers->pool, 16, sizeof(ngx_addr_t)) != NGX_OK) {
+        ngx_destroy_pool(pool);
+        return NULL;
+    }
+    return peers;
+}
+
+static ngx_int_t ngx_http_nacos_add_server(ngx_http_nacos_peers_t *peers) {
     ngx_http_upstream_server_t *server;
+    ngx_http_upstream_srv_conf_t *us;
     ngx_addr_t *adr;
-    ngx_http_nacos_srv_conf_t *ncf = ngx_http_conf_upstream_srv_conf(us, ngx_http_nacos_module);
+    ngx_uint_t i, n;
+    us = peers->us;
 
-    if (ngx_array_init(&addrs, us->servers->pool, 16, sizeof(ngx_addr_t)) != NGX_OK) {
-        return NGX_ERROR;
-    }
-    sub.out_addrs = &addrs;
-    sub.data_id = ncf->ncf->data_id;
-    sub.group = ncf->ncf->group;
-    if (ngx_nacos_subscribe(cf, &sub) != NGX_OK) {
-        return NGX_ERROR;
-    }
-
-    n = addrs.nelts;
-    adr = addrs.elts;
+    n = peers->addrs.nelts;
+    adr = peers->addrs.elts;
     for (i = 0; i < n; ++i) {
         server = ngx_array_push(us->servers);
         if (server == NULL) {
@@ -212,7 +263,112 @@ static ngx_int_t ngx_http_nacos_init_upstream(ngx_conf_t *cf, ngx_http_upstream_
         server->max_conns = 128;
         server->fail_timeout = 3000;
     }
+    return NGX_OK;
+}
 
+static ngx_int_t ngx_http_nacos_init_upstream(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *us) {
+    ngx_nacos_sub_t sub;
+    ngx_pool_t *pool;
+    ngx_http_nacos_peers_t *peers;
+    ngx_http_nacos_srv_conf_t *ncf;
+    ngx_conf_t new_cf;
 
-    return ncf->origin_init_upstream(cf, us);
+    ncf = ngx_http_conf_upstream_srv_conf(us, ngx_http_nacos_module);
+    peers = ngx_http_nacos_create_peers(cf->log);
+    pool = peers->pool;
+    if (ngx_http_nacos_create_new_us(peers, us) != NGX_OK) {
+        ngx_destroy_pool(pool);
+        return NGX_ERROR;
+    }
+
+    sub.key_ptr = &peers->key;
+    sub.data_id = ncf->ncf->data_id;
+    sub.group = ncf->ncf->group;
+    if (ngx_nacos_subscribe(cf, &sub) != NGX_OK) {
+        ngx_destroy_pool(pool);
+        return NGX_ERROR;
+    }
+
+    if (nax_nacos_get_addrs(peers->key, &peers->version, &peers->addrs) != NGX_OK) {
+        ngx_destroy_pool(pool);
+        return NGX_ERROR;
+    }
+
+    if (ngx_http_nacos_add_server(peers) != NGX_OK) {
+        ngx_destroy_pool(pool);
+        return NGX_ERROR;
+    }
+
+    new_cf = *cf;
+    new_cf.pool = peers->pool;
+    if (ncf->original_init_upstream(&new_cf, peers->us) != NGX_OK) {
+        ngx_destroy_pool(pool);
+        return NGX_ERROR;
+    }
+    ncf->original_init_peer = us->peer.init;
+    us->peer.init = ngx_http_nacos_init_peers;
+    us->peer.data = peers;
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_nacos_create_new_us(ngx_http_nacos_peers_t *new_peers, ngx_http_upstream_srv_conf_t *us) {
+    ngx_http_upstream_srv_conf_t *new_us;
+
+    new_us = ngx_palloc(new_peers->pool, sizeof(*new_us));
+    if (new_us == NULL) {
+        ngx_destroy_pool(new_peers->pool);
+        return NGX_ERROR;
+    }
+    memcpy(new_us, us, sizeof(*us));
+    if (ngx_array_init(new_us->servers,
+                       new_peers->pool, new_peers->addrs.nelts,
+                       sizeof(ngx_http_upstream_server_t)) != NGX_OK) {
+        ngx_destroy_pool(new_peers->pool);
+        return NGX_ERROR;
+    }
+    new_peers->us = new_us;
+    return ngx_http_nacos_add_server(new_peers);
+}
+
+static ngx_int_t ngx_http_nacos_init_peers(ngx_http_request_t *r, ngx_http_upstream_srv_conf_t *us) {
+    ngx_http_nacos_peers_t *peers, *new_peers;
+    ngx_http_nacos_srv_conf_t *nusf;
+    ngx_int_t rc;
+    ngx_conf_t cf;
+
+    nusf = ngx_http_conf_upstream_srv_conf(us, ngx_http_nacos_module);
+    peers = us->peer.data;
+
+    if (!nax_nacos_addrs_change(peers->key, peers->version)) {
+        return nusf->original_init_peer(r, peers->us);
+    }
+
+    new_peers = ngx_http_nacos_create_peers(r->pool->log);
+    if (new_peers == NULL) {
+        return NGX_ERROR;
+    }
+    new_peers->key = peers->key;
+    new_peers->version = peers->version;
+    rc = nax_nacos_get_addrs(new_peers->key, &new_peers->version, &new_peers->addrs);
+    if (rc != NGX_OK) {
+        ngx_destroy_pool(new_peers->pool);
+        return NGX_ERROR;
+    }
+
+    rc = ngx_http_nacos_create_new_us(new_peers, peers->us);
+    if (rc != NGX_OK) {
+        ngx_destroy_pool(new_peers->pool);
+        return NGX_ERROR;
+    }
+
+    memset(&cf, 0, sizeof(cf));
+    cf.pool = new_peers->pool;
+    cf.temp_pool = r->pool;
+
+    if (nusf->original_init_upstream(&cf, new_peers->us) != NGX_OK) {
+        ngx_destroy_pool(cf.pool);
+        return NGX_ERROR;
+    }
+
+    return nusf->original_init_peer(r, new_peers->us);
 }

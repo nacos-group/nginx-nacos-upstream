@@ -1,0 +1,9 @@
+ngx_addon_name="ngx_nacos_module ngx_http_nacos_module"
+CORE_MODULES="$CORE_MODULES ngx_nacos_module"
+HTTP_MODULES="$HTTP_MODULES ngx_http_nacos_module"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS modules/nacos/cJSON.c  \
+    modules/nacos/ngx_nacos_module.c    \
+    modules/nacos/ngx_http_nacos_module.c"
+
+HTTP_INCS="$HTTP_INCS modules/nacos"
+have=NGX_HAVE_NACOS . auto/have

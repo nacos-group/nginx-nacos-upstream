@@ -13,10 +13,6 @@ typedef struct {
     ngx_http_upstream_srv_conf_t *us;
 } ngx_http_nacos_peers_t;
 
-static void *ngx_http_nacos_create_main_conf(ngx_conf_t *cf);
-
-static ngx_int_t ngx_http_nacos_post_conf(ngx_conf_t *cf);
-
 static void *ngx_http_nacos_create_srv_conf(ngx_conf_t *cf);
 
 static char *ngx_http_conf_use_nacos_address(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
@@ -29,9 +25,9 @@ static ngx_int_t ngx_http_nacos_create_new_us(ngx_http_nacos_peers_t *new_peers,
 
 static ngx_http_module_t ngx_http_nacos_module_ctx = {
         NULL,                                  /* preconfiguration */
-        ngx_http_nacos_post_conf,       /* postconfiguration */
+        NULL,                           /* postconfiguration */
 
-        ngx_http_nacos_create_main_conf,    /* create main configuration */
+        NULL,                                /* create main configuration */
         NULL,                                 /* init main configuration */
 
         ngx_http_nacos_create_srv_conf,    /* create server configuration */
@@ -68,18 +64,6 @@ ngx_module_t ngx_http_nacos_module = {
         NGX_MODULE_V1_PADDING
 };
 
-static void *ngx_http_nacos_create_main_conf(ngx_conf_t *cf) {
-    ngx_http_nacos_main_conf_t *mncf = ngx_pcalloc(cf->pool, sizeof(*mncf));
-    if (mncf == NULL) {
-        return NULL;
-    }
-    mncf->udp_port = NGX_CONF_UNSET_UINT;
-    if (ngx_array_init(&mncf->confs, cf->pool, 4, sizeof(ngx_http_nacos_conf_t)) != NGX_OK) {
-        return NULL;
-    }
-    return mncf;
-}
-
 
 static void *ngx_http_nacos_create_srv_conf(ngx_conf_t *cf) {
     return ngx_pcalloc(cf->pool, sizeof(ngx_http_nacos_srv_conf_t));
@@ -92,9 +76,7 @@ static char *ngx_http_conf_use_nacos_address(ngx_conf_t *cf, ngx_command_t *cmd,
     ngx_str_t *value = cf->args->elts;
     ngx_nacos_sub_t tmp;
     ngx_url_t u;
-    ngx_http_nacos_main_conf_t *mncf;
     ngx_nacos_main_conf_t *mf;
-    ngx_http_nacos_conf_t *ncfs;
 
     if (nlcf->uscf) {
         return "is duplicate";
@@ -124,28 +106,8 @@ static char *ngx_http_conf_use_nacos_address(ngx_conf_t *cf, ngx_command_t *cmd,
         return NGX_CONF_ERROR;
     }
 
-    mncf = ngx_http_conf_get_module_main_conf(cf, ngx_http_nacos_module);
-
-    n = mncf->confs.nelts;
-    ncfs = mncf->confs.elts;
-    for (i = 0; i < n; ++i) {
-        if (nacos_key_eq(tmp, ncfs[i])) {
-            break;
-        }
-    }
-    if (i < n) {
-        nlcf->ncf = &ncfs[i];
-        return NGX_CONF_OK;
-    }
-
-    ncfs = ngx_array_push(&mncf->confs);
-    if (ncfs == NULL) {
-        return NGX_CONF_ERROR;
-    }
-
-    ncfs->data_id = tmp.data_id;
-    ncfs->group = tmp.group;
-    nlcf->ncf = ncfs;
+    nlcf->data_id = tmp.data_id;
+    nlcf->group = tmp.group;
     nlcf->uscf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_upstream_module);
     nlcf->original_init_upstream = nlcf->uscf->peer.init_upstream;
     if (!nlcf->original_init_upstream) {
@@ -161,33 +123,6 @@ static char *ngx_http_conf_use_nacos_address(ngx_conf_t *cf, ngx_command_t *cmd,
     }
 
     return NGX_CONF_OK;
-}
-
-static ngx_int_t ngx_http_nacos_post_conf(ngx_conf_t *cf) {
-    ngx_str_t tmp;
-    ngx_http_nacos_main_conf_t *mncf;
-    ngx_http_nacos_conf_t *ncf;
-    ngx_uint_t n, i;
-    mncf = ngx_http_conf_get_module_main_conf(cf, ngx_http_nacos_module);
-
-    ncf = mncf->confs.elts;
-    n = mncf->confs.nelts;
-    for (i = 0; i < n; ++i) {
-        tmp.len = ncf[i].data_id.len + ncf[i].group.len + 2;
-        tmp.data = ngx_pcalloc(cf->pool, tmp.len);
-        if (!tmp.data) {
-            return NGX_ERROR;
-        }
-
-        // tmp == "data_id@@group"
-        memcpy(tmp.data, ncf[i].data_id.data, ncf[i].data_id.len);
-        tmp.data[ncf[i].data_id.len] = '@';
-        tmp.data[ncf[i].data_id.len + 1] = '@';
-        memcpy(tmp.data + 2, ncf[i].group.data, ncf[i].group.len);
-
-    }
-
-    return NGX_OK;
 }
 
 u_char *ngx_http_nacos_log_handler(ngx_log_t *log, u_char *buf, size_t len) {
@@ -286,8 +221,8 @@ static ngx_int_t ngx_http_nacos_init_upstream(ngx_conf_t *cf, ngx_http_upstream_
     }
 
     sub.key_ptr = &peers->key;
-    sub.data_id = ncf->ncf->data_id;
-    sub.group = ncf->ncf->group;
+    sub.data_id = ncf->data_id;
+    sub.group = ncf->group;
     if (ngx_nacos_subscribe(cf, &sub) != NGX_OK) {
         ngx_destroy_pool(pool);
         return NGX_ERROR;

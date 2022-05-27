@@ -536,7 +536,7 @@ static ngx_int_t ngx_nacos_parse_subscribe_resp(ngx_nacos_sub_parser_t *parser, 
                     return NGX_ERROR;
                 }
                 if (parser->status != 200) {
-                    ngx_log_error(NGX_LOG_WARN, log, 0, "parse nacos resp. status not 200:%v", parser->status);
+                    ngx_log_error(NGX_LOG_WARN, log, 0, "parse nacos resp. status not 200:%d", parser->status);
                     return NGX_ERROR;
                 }
             } else {

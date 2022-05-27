@@ -6,8 +6,6 @@
 #include <cJSON.h>
 #include <ngx_event.h>
 
-static void *ngx_nacos_create_conf(ngx_cycle_t *cycle);
-
 static char *ngx_nacos_init_conf(ngx_cycle_t *cycle, void *conf);
 
 static char *ngx_nacos_conf_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
@@ -161,11 +159,6 @@ ngx_module_t ngx_nacos_module = {
 #define NACOS_DOM_RESP_FMT "{\"type\": \"push-ack\", \"lastRefTime\":\"%s\",\"data\":\"\"}"
 #define NACOS_UNKNOWN_RESP_FMT "{\"type\": \"unknown-ack\", \"lastRefTime\":\"%s\",\"data\":\"\"}"
 #define NACOS_SUB_RESP_BUF_SIZE  (16 * 1024)
-
-static void *ngx_nacos_create_conf(ngx_cycle_t *cycle) {
-
-    return NULL;
-}
 
 static char *ngx_nacos_init_conf(ngx_cycle_t *cycle, void *conf) {
     ngx_nacos_main_conf_t *ncf = conf;
@@ -356,6 +349,8 @@ static void ngx_nacos_udp_handler(ngx_connection_t *c) {
     mcf = c->listening->servers;
     data.len = c->buffer->last - c->buffer->pos;
     data.data = c->buffer->pos;
+    d = NULL;
+    tr = NULL;
 
     ngx_log_error(NGX_LOG_INFO, c->log, 0, "receive udp msg %l from %V", data.len, &c->addr_text);
 
@@ -446,7 +441,7 @@ static void ngx_nacos_udp_handler(ngx_connection_t *c) {
         d = NULL;
     }
     rc = c->send(c, data.data, resp_len);
-    if (rc != resp_len) {
+    if (rc != (ssize_t) resp_len) {
         // udp believe once send successfully
         ngx_log_error(NGX_LOG_WARN, c->log, 0, "nacos send udp resp to %V error", &c->addr_text);
         goto end;
@@ -601,7 +596,7 @@ static ngx_int_t ngx_nacos_parse_subscribe_resp(ngx_nacos_sub_parser_t *parser, 
                 ngx_log_error(NGX_LOG_WARN, log, 0, "parse nacos resp. unknown Content-Length");
                 return NGX_ERROR;
             } else if (parser->content_len > 0) {// content-length
-                if (parser->len - parser->offset < parser->content_len) {
+                if (parser->len - parser->offset < (size_t) parser->content_len) {
                     return NGX_DECLINED;
                 }
                 goto parse_json;
@@ -626,7 +621,8 @@ static ngx_int_t ngx_nacos_parse_subscribe_resp(ngx_nacos_sub_parser_t *parser, 
 
 static char *ngx_nacos_parse_addrs_from_json(cJSON *json, ngx_pool_t *pool, ngx_pool_t *temp_pool, ngx_log_t *log) {
     cJSON *arr, *item, *ip, *port;
-    int i, n, is, j, m;
+    int i, n, is, m;
+    ngx_uint_t j;
     ngx_url_t u;
     char *ts, *c;
     static char buf[32768];
@@ -749,6 +745,7 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
 
     tbuf = NULL;
     tries = 0;
+    s = -1;
 
     tbuf = ngx_palloc(cf->temp_pool, NACOS_SUB_RESP_BUF_SIZE);
     if (tbuf == NULL) {
@@ -756,7 +753,6 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
     }
     memset(&parser, 0, sizeof(parser));
 
-    s = -1;
     retry:
     if (++tries > mcf->server_list.nelts) {
         goto fetch_failed;
@@ -810,7 +806,7 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
                           &addrs[i].name);
             goto retry;
         }
-    } while (sd < len);
+    } while ((ngx_uint_t) sd < len);
 
     memset(&parser, 0, sizeof(parser));
     parser.buf = tbuf;
@@ -902,9 +898,9 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
 }
 
 static ngx_int_t ngx_nacos_init_key_zone(ngx_shm_zone_t *zone, void *data) {
-    ngx_nacos_key_t *key;
+    ngx_nacos_key_t * key;
     ngx_nacos_key_ctx_t *ctx;
-    ngx_uint_t len, *v;
+    ngx_uint_t len;
     char *c;
     key = zone->data;
     ctx = key->ctx;

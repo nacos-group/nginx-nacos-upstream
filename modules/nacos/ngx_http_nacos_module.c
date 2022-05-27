@@ -127,7 +127,7 @@ static char *ngx_http_conf_use_nacos_address(ngx_conf_t *cf, ngx_command_t *cmd,
 
 u_char *ngx_http_nacos_log_handler(ngx_log_t *log, u_char *buf, size_t len) {
     ngx_http_nacos_peers_t *peers;
-    u_char * p;
+    u_char * p = buf;
     if (log->action) {
         p = ngx_snprintf(buf, len, " while %s", log->action);
         len -= p - buf;

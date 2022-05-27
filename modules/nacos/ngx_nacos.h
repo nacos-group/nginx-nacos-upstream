@@ -53,7 +53,7 @@ ngx_nacos_main_conf_t *ngx_nacos_get_main_conf(ngx_conf_t *cf);
 ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub);
 
 static ngx_inline ngx_flag_t
-nax_nacos_addrs_change(ngx_nacos_key_t *key, const ngx_uint_t version) {
+ngx_nacos_addrs_change(ngx_nacos_key_t *key, const ngx_uint_t version) {
     ngx_uint_t new_version;
     ngx_nacos_key_ctx_t *ctx;
 

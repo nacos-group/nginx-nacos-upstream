@@ -922,7 +922,7 @@ static ngx_int_t ngx_nacos_init_key_zone(ngx_shm_zone_t *zone, void *data) {
         return NGX_ERROR;
     }
     key->ctx->wrlock = ctx->wrlock;
-    key->ctx->version = ctx->wrlock;
+    key->ctx->version = ctx->version;
     memcpy(key->ctx->addrs, c, len);
     return NGX_OK;
 }

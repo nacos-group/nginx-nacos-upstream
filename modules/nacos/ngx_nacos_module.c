@@ -165,6 +165,9 @@ static char *ngx_nacos_init_conf(ngx_cycle_t *cycle, void *conf) {
     if (ncf == NULL) {// no nacos config
         return NGX_CONF_OK;
     }
+    if (ncf->keys.nelts == 0) {
+        return "remove nacos block if not need";
+    }
 
     return NGX_CONF_OK;
 }

@@ -82,7 +82,8 @@ static char *ngx_http_conf_use_nacos_address(ngx_conf_t *cf, ngx_command_t *cmd,
         return "is duplicate";
     }
 
-    memset(&u, 0, sizeof(u));
+    ngx_memzero(&u, sizeof(u));
+    ngx_memzero(&tmp, sizeof(tmp));
 
     for (i = 1; i < n; ++i) {
         if (value[i].len > 8 && ngx_strncmp(value[i].data, "data_id=", 8) == 0) {

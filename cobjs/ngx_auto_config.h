@@ -1,4 +1,4 @@
-#define NGX_CONFIGURE ""
+#define NGX_CONFIGURE " --add-module=modules/nacos"
 
 #ifndef NGX_COMPILER
 #define NGX_COMPILER  "gcc 9.4.0 (Ubuntu 9.4.0-1ubuntu1~20.04.1) "
@@ -393,6 +393,11 @@
 #endif
 
 
+#ifndef NGX_HAVE_NACOS
+#define NGX_HAVE_NACOS  1
+#endif
+
+
 #ifndef NGX_PCRE
 #define NGX_PCRE  1
 #endif
@@ -491,4 +496,3 @@
 #ifndef NGX_GROUP
 #define NGX_GROUP  "nogroup"
 #endif
-

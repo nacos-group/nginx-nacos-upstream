@@ -301,7 +301,6 @@ static ngx_int_t ngx_http_nacos_init_peers(ngx_http_request_t *r, ngx_http_upstr
         ngx_destroy_pool(new_peers->pool);
         return NGX_ERROR;
     }
-    ngx_destroy_pool(peers->pool);
 
     if (ngx_http_nacos_add_server(new_peers) != NGX_OK) {
         ngx_destroy_pool(new_peers->pool);
@@ -316,6 +315,7 @@ static ngx_int_t ngx_http_nacos_init_peers(ngx_http_request_t *r, ngx_http_upstr
         ngx_destroy_pool(new_peers->pool);
         return NGX_ERROR;
     }
-
+    us->peer.data = new_peers;
+    ngx_destroy_pool(peers->pool);
     return new_peers->us->peer.init(r, new_peers->us);
 }

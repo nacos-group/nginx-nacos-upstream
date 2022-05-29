@@ -58,4 +58,8 @@ extern sig_atomic_t    ngx_reopen;
 extern sig_atomic_t    ngx_change_binary;
 
 
+#if NGX_HAVE_AUXILIARY
+void ngx_worker_aux_process_init(ngx_cycle_t *cycle);
+#endif
+
 #endif /* _NGX_PROCESS_CYCLE_H_INCLUDED_ */

@@ -10,6 +10,9 @@
 #include <ngx_event.h>
 #include <ngx_channel.h>
 
+#if NGX_HAVE_AUXILIARY
+#include <ngx_auxiliary_module.h>
+#endif
 
 static void ngx_start_worker_processes(ngx_cycle_t *cycle, ngx_int_t n,
     ngx_int_t type);
@@ -131,6 +134,10 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
                                NGX_PROCESS_RESPAWN);
     ngx_start_cache_manager_processes(cycle, 0);
 
+#if NGX_HAVE_AUXILIARY
+    ngx_aux_start_auxiliary_processes(cycle, 0);
+#endif
+
     ngx_new_binary = 0;
     delay = 0;
     sigio = 0;
@@ -215,6 +222,9 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
                 ngx_start_worker_processes(cycle, ccf->worker_processes,
                                            NGX_PROCESS_RESPAWN);
                 ngx_start_cache_manager_processes(cycle, 0);
+#if NGX_HAVE_AUXILIARY
+                ngx_aux_start_auxiliary_processes(cycle, 0);
+#endif
                 ngx_noaccepting = 0;
 
                 continue;
@@ -234,6 +244,9 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
             ngx_start_worker_processes(cycle, ccf->worker_processes,
                                        NGX_PROCESS_JUST_RESPAWN);
             ngx_start_cache_manager_processes(cycle, 1);
+#if NGX_HAVE_AUXILIARY
+            ngx_aux_start_auxiliary_processes(cycle, 1);
+#endif
 
             /* allow new processes to start */
             ngx_msleep(100);
@@ -248,6 +261,9 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
             ngx_start_worker_processes(cycle, ccf->worker_processes,
                                        NGX_PROCESS_RESPAWN);
             ngx_start_cache_manager_processes(cycle, 0);
+#if NGX_HAVE_AUXILIARY
+            ngx_aux_start_auxiliary_processes(cycle, 0);
+#endif
             live = 1;
         }
 
@@ -1196,3 +1212,10 @@ ngx_cache_loader_process_handler(ngx_event_t *ev)
 
     exit(0);
 }
+
+
+#if NGX_HAVE_AUXILIARY
+void ngx_worker_aux_process_init(ngx_cycle_t *cycle){
+    ngx_worker_process_init(cycle, -1);
+}
+#endif

@@ -52,3 +52,7 @@
 #ifndef NGX_HAVE_NACOS
 #define NGX_HAVE_NACOS 1
 #endif
+
+#ifndef NGX_HAVE_AUXILIARY
+#define NGX_HAVE_AUXILIARY 1
+#endif

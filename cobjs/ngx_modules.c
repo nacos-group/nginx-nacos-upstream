@@ -54,6 +54,7 @@ extern ngx_module_t ngx_http_headers_filter_module;
 extern ngx_module_t ngx_http_copy_filter_module;
 extern ngx_module_t ngx_http_range_body_filter_module;
 extern ngx_module_t ngx_http_not_modified_filter_module;
+extern ngx_module_t ngx_auxiliary_module;
 extern ngx_module_t ngx_nacos_module;
 extern ngx_module_t ngx_http_nacos_module;
 
@@ -110,6 +111,7 @@ ngx_module_t *ngx_modules[] = {
         &ngx_http_copy_filter_module,
         &ngx_http_range_body_filter_module,
         &ngx_http_not_modified_filter_module,
+        &ngx_auxiliary_module,
         &ngx_nacos_module,
         &ngx_http_nacos_module,
         NULL
@@ -167,6 +169,7 @@ char *ngx_module_names[] = {
         "ngx_http_copy_filter_module",
         "ngx_http_range_body_filter_module",
         "ngx_http_not_modified_filter_module",
+        "ngx_auxiliary_module",
         "ngx_nacos_module",
         "ngx_http_nacos_module",
         NULL

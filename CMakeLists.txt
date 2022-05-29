@@ -137,6 +137,8 @@ set(NGX_INC_DIR src/core
 set(NACOS YES)
 
 if (NACOS)
+    list(APPEND NGX_INC_DIR modules/auxiliary)
+    list(APPEND NGX_C_FILES modules/auxiliary/ngx_auxiliary_module.c)
     list(APPEND NGX_INC_DIR modules/nacos)
     list(APPEND NGX_C_FILES modules/nacos/ngx_nacos_module.c modules/nacos/ngx_http_nacos_module.c modules/nacos/cJSON.c)
 endif ()

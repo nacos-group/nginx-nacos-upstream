@@ -38,13 +38,11 @@ typedef struct {
     ngx_str_t udp_port;
     ngx_str_t udp_ip;
     ngx_str_t udp_bind;
-    size_t key_pool_size;
     size_t key_zone_size;
     size_t udp_pool_size;
     ngx_log_t *error_log;
 
     ngx_listening_t *udp_listen;
-    ngx_pool_t *keys_pool;
     ngx_array_t keys; // ngx_nacos_key
 } ngx_nacos_main_conf_t;
 

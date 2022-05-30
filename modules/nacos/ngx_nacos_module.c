@@ -107,14 +107,6 @@ static ngx_command_t cmds[] = {
                 NULL
         },
         {
-                ngx_string("key_pool_size"),
-                NGX_NACOS_MAIN_CONF | NGX_DIRECT_CONF | NGX_CONF_TAKE1,
-                ngx_conf_set_size_slot,
-                0,
-                offsetof(ngx_nacos_main_conf_t, key_pool_size),
-                NULL
-        },
-        {
                 ngx_string("key_zone_size"),
                 NGX_NACOS_MAIN_CONF | NGX_DIRECT_CONF | NGX_CONF_TAKE1,
                 ngx_conf_set_size_slot,
@@ -201,7 +193,6 @@ static char *ngx_nacos_conf_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf
         return NGX_CONF_ERROR;
     }
 
-    ncf->key_pool_size = NGX_CONF_UNSET_SIZE;
     ncf->key_zone_size = NGX_CONF_UNSET_SIZE;
     ncf->udp_pool_size = NGX_CONF_UNSET_SIZE;
 
@@ -268,9 +259,13 @@ static char *ngx_nacos_conf_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf
         memcpy(ncf->udp_bind.data + ncf->udp_ip.len + 1, ncf->udp_port.data, ncf->udp_port.len);
     }
 
-    ngx_conf_init_size_value(ncf->key_pool_size, 4096);
     ngx_conf_init_size_value(ncf->key_zone_size, 16384);
     ngx_conf_init_size_value(ncf->udp_pool_size, 8192);
+
+    if (ngx_array_init(&ncf->keys, cf->pool, 8, sizeof(ngx_nacos_key_t)) != NGX_OK) {
+        rv = NGX_CONF_ERROR;
+        goto end;
+    }
 
     ngx_memzero(&u, sizeof(ngx_url_t));
     u.url = ncf->udp_bind;
@@ -747,17 +742,7 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
 
     mcf = ngx_nacos_get_main_conf(cf);
 
-    if (!mcf->keys_pool) {
-        mcf->keys_pool = ngx_create_pool(mcf->key_pool_size, cf->log);
-        if (mcf->keys_pool == NULL) {
-            return NGX_ERROR;
-        }
-        if (ngx_array_init(&mcf->keys, mcf->keys_pool, 4, sizeof(ngx_nacos_key_t)) != NGX_OK) {
-            ngx_destroy_pool(mcf->keys_pool);
-            mcf->keys_pool = NULL;
-            return NGX_ERROR;
-        }
-
+    if (mcf->keys.nelts == 0) {
         mcf->cur_srv_index = rand() % mcf->server_list.nelts;
     }
 
@@ -879,7 +864,7 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
         goto fetch_failed;
     }
 
-    key->ctx = ngx_palloc(mcf->keys_pool, sizeof(ngx_nacos_key_ctx_t));
+    key->ctx = ngx_palloc(cf->pool, sizeof(ngx_nacos_key_ctx_t));
     if (key->ctx == NULL) {
         goto fetch_failed;
     }
@@ -898,7 +883,7 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
 
     zone_name.len = ngx_snprintf(rbuf, sizeof(rbuf) - 1, "%V@@%V",
                                  &tmp.group, &tmp.data_id) - rbuf;
-    zone_name.data = ngx_palloc(mcf->keys_pool, zone_name.len);
+    zone_name.data = ngx_palloc(cf->pool, zone_name.len);
     if (zone_name.data == NULL) {
         goto fetch_failed;
     }

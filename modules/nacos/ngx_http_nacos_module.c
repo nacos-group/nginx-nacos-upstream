@@ -82,7 +82,8 @@ static char *ngx_http_conf_use_nacos_address(ngx_conf_t *cf, ngx_command_t *cmd,
         return "is duplicate";
     }
 
-    memset(&u, 0, sizeof(u));
+    ngx_memzero(&u, sizeof(u));
+    ngx_memzero(&tmp, sizeof(tmp));
 
     for (i = 1; i < n; ++i) {
         if (value[i].len > 8 && ngx_strncmp(value[i].data, "data_id=", 8) == 0) {
@@ -300,7 +301,6 @@ static ngx_int_t ngx_http_nacos_init_peers(ngx_http_request_t *r, ngx_http_upstr
         ngx_destroy_pool(new_peers->pool);
         return NGX_ERROR;
     }
-    ngx_destroy_pool(peers->pool);
 
     if (ngx_http_nacos_add_server(new_peers) != NGX_OK) {
         ngx_destroy_pool(new_peers->pool);
@@ -315,6 +315,7 @@ static ngx_int_t ngx_http_nacos_init_peers(ngx_http_request_t *r, ngx_http_upstr
         ngx_destroy_pool(new_peers->pool);
         return NGX_ERROR;
     }
-
+    us->peer.data = new_peers;
+    ngx_destroy_pool(peers->pool);
     return new_peers->us->peer.init(r, new_peers->us);
 }

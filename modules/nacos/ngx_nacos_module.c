@@ -40,7 +40,15 @@ typedef struct {
 
 static ngx_int_t ngx_nacos_parse_subscribe_resp(ngx_nacos_sub_parser_t *parser, ngx_log_t *log);
 
-static char *ngx_nacos_parse_addrs_from_json(cJSON *json, ngx_pool_t *pool, ngx_pool_t *temp_pool, ngx_log_t *log);
+typedef struct {
+    cJSON *json;
+    ngx_uint_t prev_version;
+    ngx_pool_t *pool;
+    ngx_log_t *log;
+    ngx_uint_t current_version;
+} ngx_nacos_addr_resp_parser_t;
+
+static char *ngx_nacos_parse_addrs_from_json(ngx_nacos_addr_resp_parser_t *parser);
 
 
 static ngx_core_module_t nacos_module = {
@@ -151,12 +159,12 @@ ngx_module_t ngx_nacos_module = {
 
 
 #define NACOS_REQ_FMT "GET /nacos/v1/ns/instance/list?serviceName=%V%%40%%40%V" \
-    "&udpPort=%V&clientIp=%V HTTP/1.0\r\n"                                      \
+    "&udpPort=%V&clientIP=%V HTTP/1.0\r\n"                                      \
     "Host: %V\r\n"                                                              \
     "User-Agent: Nacos-Java-Client:v2.10.0\r\n"                                 \
     "Connection: close\r\n\r\n"                                                 \
 
-#define NACOS_DOM_RESP_FMT "{\"type\": \"push-ack\", \"lastRefTime\":\"%s\",\"data\":\"\"}"
+#define NACOS_DOM_RESP_FMT "{\"type\": \"push-ack\", \"lastRefTime\":%s,\"data\":\"\"}"
 #define NACOS_UNKNOWN_RESP_FMT "{\"type\": \"unknown-ack\", \"lastRefTime\":\"%s\",\"data\":\"\"}"
 #define NACOS_SUB_RESP_BUF_SIZE  (16 * 1024)
 
@@ -345,6 +353,7 @@ static void ngx_nacos_udp_handler(ngx_connection_t *c) {
     cJSON *msg, *type, *d, *ref, *name;
     ngx_nacos_key_t key, *tk;
     char *tc, *tr, *oldAddr, *nAddr;
+    ngx_nacos_addr_resp_parser_t resp_parser;
     ngx_str_t data;
     ngx_uint_t i, n;
     ssize_t rc;
@@ -377,7 +386,7 @@ static void ngx_nacos_udp_handler(ngx_connection_t *c) {
         goto end;
     }
     if (ngx_strncmp(tc, "dom", 3) == 0) {
-        resp_len = ngx_snprintf(data.data, 64 * 1024, NACOS_DOM_RESP_FMT, tc) - data.data;
+        resp_len = ngx_snprintf(data.data, 64 * 1024, NACOS_DOM_RESP_FMT, tr) - data.data;
         tc = cJSON_GetStringValue(d);
         if (tc == NULL) {
             d = NULL;
@@ -411,9 +420,16 @@ static void ngx_nacos_udp_handler(ngx_connection_t *c) {
         n = mcf->keys.nelts;
         for (i = 0; i < n; ++i) {
             if (nacos_key_eq(tk[i], key)) {
-                tc = ngx_nacos_parse_addrs_from_json(d, c->pool, c->pool, c->log);
+                ngx_rwlock_rlock(&tk[i].ctx->wrlock);
+                resp_parser.prev_version = tk[i].ctx->version;
+                ngx_rwlock_unlock(&tk[i].ctx->wrlock);
+
+                resp_parser.json = d;
+                resp_parser.log = c->log;
+                resp_parser.pool = c->pool;
+                tc = ngx_nacos_parse_addrs_from_json(&resp_parser);
                 if (tc == NULL) {
-                    ngx_log_error(NGX_LOG_WARN, c->log, 0, "nacos parse udp data error:%V", &c->addr_text);
+                    // maybe version not changed
                     goto end;
                 }
                 len = *(ngx_uint_t *) tc;
@@ -425,13 +441,14 @@ static void ngx_nacos_udp_handler(ngx_connection_t *c) {
                 }
                 memcpy(nAddr, tc, len);
                 ngx_rwlock_wlock(&tk[i].ctx->wrlock);
-                ++tk[i].ctx->version;
+                tk[i].ctx->version = resp_parser.current_version;
                 oldAddr = tk[i].ctx->addrs;
                 tk[i].ctx->addrs = nAddr;
                 ngx_rwlock_unlock(&tk[i].ctx->wrlock);
                 ngx_slab_free(tk[i].sh, oldAddr);
-                ngx_log_error(NGX_LOG_INFO, c->log, 0, "nacos udp dom  %V@@%V is updated from:%V", &key.group,
-                              &key.data_id, &c->addr_text);
+                ngx_log_error(NGX_LOG_INFO, c->log, 0, "nacos udp dom  %V@@%V version=%ul is updated from:%V",
+                              &key.group,
+                              &key.data_id, resp_parser.current_version, &c->addr_text);
                 break;
             }
         }
@@ -622,16 +639,31 @@ static ngx_int_t ngx_nacos_parse_subscribe_resp(ngx_nacos_sub_parser_t *parser, 
     return NGX_OK;
 }
 
-static char *ngx_nacos_parse_addrs_from_json(cJSON *json, ngx_pool_t *pool, ngx_pool_t *temp_pool, ngx_log_t *log) {
-    cJSON *arr, *item, *ip, *port;
+static char *
+ngx_nacos_parse_addrs_from_json(ngx_nacos_addr_resp_parser_t *parser) {
+    cJSON *json, *arr, *item, *ip, *port, *ref;
     int i, n, is, m;
     ngx_uint_t j;
     ngx_url_t u;
+    ngx_log_t *log;
     char *ts, *c;
     static char buf[32768];
 
+    json = parser->json;
+    log = parser->log;
+
+    ref = cJSON_GetObjectItem(json, "lastRefTime");
+    if (!cJSON_IsNumber(ref)) {
+        ngx_log_error(NGX_LOG_WARN, log, 0, "nacos response json not contains valid lastRefTime");
+        return NULL;
+    }
+    parser->current_version = (ngx_uint_t) cJSON_GetNumberValue(ref);
+    if (parser->prev_version == parser->current_version) {
+        return NULL;
+    }
+
     arr = cJSON_GetObjectItem(json, "hosts");
-    if (arr == NULL || arr->type != cJSON_Array) {
+    if (!cJSON_IsArray(arr)) {
         ngx_log_error(NGX_LOG_WARN, log, 0, "nacos response json hosts is not array");
         return NULL;
     }
@@ -641,17 +673,17 @@ static char *ngx_nacos_parse_addrs_from_json(cJSON *json, ngx_pool_t *pool, ngx_
     m = 0;
     for (i = 0; i < n; ++i) {
         item = cJSON_GetArrayItem(arr, i);
-        if (item == NULL || item->type != cJSON_Object) {
+        if (!cJSON_IsObject(item)) {
             ngx_log_error(NGX_LOG_WARN, log, 0, "nacos response json hosts item is not object");
             return NULL;
         }
         ip = cJSON_GetObjectItem(item, "ip");
-        if (ip == NULL || ip->type != cJSON_String) {
+        if (!cJSON_IsString(ip)) {
             ngx_log_error(NGX_LOG_WARN, log, 0, "nacos response json hosts ip is not string");
             return NULL;
         }
         port = cJSON_GetObjectItem(item, "port");
-        if (port == NULL || port->type != cJSON_Number) {
+        if (!cJSON_IsNumber(port)) {
             ngx_log_error(NGX_LOG_WARN, log, 0, "nacos response json hosts port is not number");
             return NULL;
         }
@@ -667,7 +699,7 @@ static char *ngx_nacos_parse_addrs_from_json(cJSON *json, ngx_pool_t *pool, ngx_
         u.url.len = strlen(ts);
         u.url.data = (u_char *) ts;
         u.default_port = is;
-        if (ngx_parse_url(temp_pool, &u) != NGX_OK) {
+        if (ngx_parse_url(parser->pool, &u) != NGX_OK) {
             if (u.err) {
                 ngx_log_error(NGX_LOG_EMERG, log, 0,
                               "%s in nacos server_list \"%V\"", u.err, &u.url);
@@ -691,7 +723,7 @@ static char *ngx_nacos_parse_addrs_from_json(cJSON *json, ngx_pool_t *pool, ngx_
     *(ngx_uint_t *) c = n;// byte len
     c += sizeof(ngx_uint_t);
     *(ngx_uint_t *) c = m;// addr num
-    c = ngx_palloc(pool, n);
+    c = ngx_palloc(parser->pool, n);
     if (c == NULL) {
         return NULL;
     }
@@ -710,6 +742,7 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
     ngx_socket_t s;
     ngx_nacos_key_t tmp, *key;
     ngx_nacos_sub_parser_t parser;
+    ngx_nacos_addr_resp_parser_t resp_parser;
     ngx_str_t zone_name;
 
     mcf = ngx_nacos_get_main_conf(cf);
@@ -850,13 +883,16 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
     if (key->ctx == NULL) {
         goto fetch_failed;
     }
-    key->ctx->version = 1;
     key->ctx->wrlock = 0;
-    if ((key->ctx->addrs = ngx_nacos_parse_addrs_from_json(parser.json_resp, mcf->keys_pool, cf->temp_pool,
-                                                           cf->log))
-        == NULL) {
+    key->ctx->version = 1;
+    resp_parser.prev_version = key->ctx->version;
+    resp_parser.json = parser.json_resp;
+    resp_parser.log = cf->log;
+    resp_parser.pool = cf->temp_pool;
+    if ((key->ctx->addrs = ngx_nacos_parse_addrs_from_json(&resp_parser)) == NULL) {
         goto fetch_failed;
     }
+    key->ctx->version = resp_parser.current_version;
 
     *sub->key_ptr = key;
 

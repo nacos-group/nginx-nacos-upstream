@@ -31,7 +31,8 @@ http {
 ```./configure --add-module=modules/nacos && make ```
 
 ### 原理
-nginx 启动的时候， 向nacos 服务器发送一个 http 请求。
+新增加一个 auxiliary 模块，用于订阅和接受 nacos 的 udp 消息推送，然后更新到共享内存，便于 worker 进程可以拿到最新的推送。
+推送的数据会缓存到磁盘，下次启动时候首先从磁盘读取。
 
 ```GET /nacos/v1/ns/instance/list?serviceNames=...&udpPort=udp_port&clientIp=udp_ip```
 

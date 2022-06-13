@@ -31,10 +31,6 @@ http {
 ```./configure --add-module=modules/nacos && make ```
 
 ### 原理
-新增加一个 auxiliary 模块，用于订阅和接受 nacos 的 udp 消息推送，然后更新到共享内存，便于 worker 进程可以拿到最新的推送。
-推送的数据会缓存到磁盘，下次启动时候首先从磁盘读取。
+ - 新增加一个 auxiliary 模块, 启动一个单独辅助进程，用于订阅和接受 nacos 的 udp 消息推送，不影响 worker 进程的工作。
+ - 收到消息推送后更新到共享内存，便于 worker 进程可以拿到最新的推送。 推送的数据也会缓存到磁盘，下次启动时候首先从磁盘读取。
 
-```GET /nacos/v1/ns/instance/list?serviceNames=...&udpPort=udp_port&clientIp=udp_ip```
-
-然后打开一个udp 端口，接受nacos 的 ip 地址推送。
-收到推送信息后，更新到共享内存。以便于每个worker 都能获取到最新的ip，进行反向代理

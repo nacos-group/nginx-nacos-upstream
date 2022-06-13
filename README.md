@@ -13,6 +13,7 @@ nacos {
     udp_bind 0.0.0.0:19999; # 绑定udp 地址
     error_log logs/nacos.log info;
     default_group DEFAULT_GROUP; # 默认的nacos group name
+    cache_dir cmake-build-debug/nacos/;
 }
 http {
     upstream s {

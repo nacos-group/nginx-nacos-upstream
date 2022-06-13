@@ -29,7 +29,7 @@ http {
 ```
 
 ### 编译
-```./configure --add-module=modules/nacos && make ```
+```./configure --add-module=modules/auxiliary --add-module=modules/nacos && make ```
 
 ### 原理
  - 新增加一个 auxiliary 模块, 启动一个单独辅助进程，用于订阅和接受 nacos 的 udp 消息推送，不影响 worker 进程的工作。

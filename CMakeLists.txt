@@ -142,8 +142,22 @@ if (NACOS)
     list(APPEND NGX_INC_DIR modules/nacos)
     list(APPEND NGX_C_FILES
             modules/nacos/ngx_nacos_module.c
+            modules/nacos/ngx_nacos_aux.c
+            modules/nacos/ngx_nacos_http_parse.c
             modules/nacos/ngx_nacos_data.c
-            modules/nacos/ngx_http_nacos_module.c modules/nacos/cJSON.c)
+            modules/nacos/ngx_http_nacos_module.c)
+
+    list(APPEND NGX_C_FILES
+            modules/nacos/yaij/yajl.c
+            modules/nacos/yaij/yajl_alloc.c
+            modules/nacos/yaij/yajl_buf.c
+            modules/nacos/yaij/yajl_encode.c
+            modules/nacos/yaij/yajl_gen.c
+            modules/nacos/yaij/yajl_lex.c
+            modules/nacos/yaij/yajl_parser.c
+            modules/nacos/yaij/yajl_tree.c
+            modules/nacos/yaij/yajl_version.c
+            )
 endif ()
 
 list(APPEND NGX_C_FILES cobjs/ngx_modules.c)

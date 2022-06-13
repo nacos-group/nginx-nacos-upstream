@@ -81,6 +81,9 @@ CORE_SRCS="src/core/nginx.c \
            src/core/ngx_syslog.c"
 
 
+AUXILIARY_MODULES=
+AUXILIARY_INCS=
+
 EVENT_MODULES="ngx_events_module ngx_event_core_module"
 
 EVENT_INCS="src/event src/event/modules"

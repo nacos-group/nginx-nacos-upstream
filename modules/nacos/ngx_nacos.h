@@ -33,7 +33,7 @@ typedef struct {
 
 typedef struct {
     ngx_array_t server_list;// ngx_addr_t
-    ngx_int_t cur_srv_index;
+    ngx_uint_t cur_srv_index;
     ngx_str_t default_group;
     ngx_str_t udp_port;
     ngx_str_t udp_ip;
@@ -45,30 +45,34 @@ typedef struct {
     ngx_log_t *error_log;
     ngx_str_t cache_dir;
 
-
-    ngx_pool_t *pool;
-    ngx_array_t *keys; //  ngx_nacos_key_t *
+    ngx_array_t keys; //  ngx_nacos_key_t *
     ngx_hash_t *key_hash;
+    ngx_addr_t udp_addr;
 } ngx_nacos_main_conf_t;
 
 ngx_nacos_main_conf_t *ngx_nacos_get_main_conf(ngx_conf_t *cf);
 
 ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub);
 
-static ngx_inline ngx_flag_t
-ngx_nacos_addrs_change(ngx_nacos_key_t *key, const ngx_uint_t version) {
-    ngx_uint_t new_version;
+static ngx_inline ngx_uint_t
+ngx_nacos_addrs_version(ngx_nacos_key_t *key) {
+    ngx_uint_t v;
     ngx_nacos_key_ctx_t *ctx;
-
     ctx = key->ctx;
+
     if (key->sh) {
         ngx_rwlock_rlock(&ctx->wrlock);
     }
-    new_version = ctx->version;
+    v = ctx->version;
     if (key->sh) {
         ngx_rwlock_unlock(&ctx->wrlock);
     }
-    if (new_version != version) {
+    return v;
+}
+
+static ngx_inline ngx_flag_t
+ngx_nacos_addrs_change(ngx_nacos_key_t *key, const ngx_uint_t version) {
+    if (ngx_nacos_addrs_version(key) != version) {
         return 1;
     }
     return 0;

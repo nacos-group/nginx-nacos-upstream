@@ -10,7 +10,7 @@
 
 typedef struct ngx_aux_proc_s ngx_aux_proc_t;
 
-typedef void (*ngx_aux_proc_handler_t)(ngx_aux_proc_t *p);
+typedef ngx_int_t (*ngx_aux_proc_handler_t)(ngx_cycle_t *cycle, ngx_aux_proc_t *p);
 
 struct ngx_aux_proc_s {
     ngx_str_t name;

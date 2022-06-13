@@ -37,7 +37,7 @@ fi
 
 # ALL_INCS, required by the addons and by OpenWatcom C precompiled headers
 
-ngx_incs=`echo $CORE_INCS $NGX_OBJS $HTTP_INCS $MAIL_INCS $STREAM_INCS\
+ngx_incs=`echo $CORE_INCS $NGX_OBJS $AUXILIARY_INCS $HTTP_INCS $MAIL_INCS $STREAM_INCS\
     | sed -e "s/  *\([^ ][^ ]*\)/$ngx_regex_cont$ngx_include_opt\1/g" \
           -e "s/\//$ngx_regex_dirsep/g"`
 
@@ -57,7 +57,7 @@ ngx_deps=`echo $CORE_DEPS $NGX_AUTO_CONFIG_H $NGX_PCH \
     | sed -e "s/  *\([^ ][^ ]*\)/$ngx_regex_cont\1/g" \
           -e "s/\//$ngx_regex_dirsep/g"`
 
-ngx_incs=`echo $CORE_INCS $NGX_OBJS \
+ngx_incs=`echo $CORE_INCS $NGX_OBJS $AUXILIARY_INCS \
     | sed -e "s/  *\([^ ][^ ]*\)/$ngx_regex_cont$ngx_include_opt\1/g" \
           -e "s/\//$ngx_regex_dirsep/g"`
 

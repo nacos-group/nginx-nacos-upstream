@@ -3,9 +3,9 @@
 //
 
 #include <ngx_nacos.h>
-#include <cJSON.h>
 #include <ngx_event.h>
 #include <ngx_nacos_data.h>
+#include <ngx_nacos_aux.h>
 
 static char *ngx_nacos_init_conf(ngx_cycle_t *cycle, void *conf);
 
@@ -14,10 +14,6 @@ static char *ngx_nacos_conf_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf
 static char *ngx_nacos_conf_server_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static char *ngx_nacos_conf_error_log(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-
-static void ngx_nacos_udp_handler(ngx_connection_t *c);
-
-static u_char *ngx_nacos_log_error(ngx_log_t *log, u_char *buf, size_t len);
 
 static ngx_int_t ngx_nacos_init_key_zone(ngx_shm_zone_t *zone, void *data);
 
@@ -146,52 +142,56 @@ ngx_module_t ngx_nacos_module = {
 };
 
 
-#define NACOS_DOM_RESP_FMT "{\"type\": \"push-ack\", \"lastRefTime\":%s,\"data\":\"\"}"
-#define NACOS_UNKNOWN_RESP_FMT "{\"type\": \"unknown-ack\", \"lastRefTime\":\"%s\",\"data\":\"\"}"
-
 static char *ngx_nacos_init_conf(ngx_cycle_t *cycle, void *conf) {
     ngx_nacos_main_conf_t *ncf = conf;
-    ngx_array_t * keys;
     ngx_hash_init_t ha;
     ngx_hash_key_t *hkeys;
-    ngx_nacos_key_t * *k;
+    ngx_nacos_key_t * k;
+    ngx_pool_t *temp;
     ngx_uint_t i, n;
     u_char buf[512];
     if (ncf == NULL) {// no nacos config
         return NGX_CONF_OK;
     }
-    if ((keys = ncf->keys) == NULL) {
+    if (ncf->keys.nelts == 0) {
         return "remove nacos block if not need";
     }
 
-    ha.pool = ncf->pool;
-    ha.temp_pool = keys->pool;
+    temp = ngx_create_pool(4096, cycle->log);
+    if (temp == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    ha.pool = cycle->pool;
+    ha.temp_pool = temp;
     ha.bucket_size = ncf->keys_bucket_size;
     ha.max_size = ncf->keys_hash_max_size;
     ha.key = ngx_hash_key_lc;
     ha.name = "nacos_keys_hash";
     ha.hash = NULL;
 
-    n = keys->nelts;
-    k = keys->elts;
+    n = ncf->keys.nelts;
+    k = ncf->keys.elts;
 
     hkeys = ngx_palloc(ha.temp_pool, n * sizeof(*hkeys));
     if (hkeys == NULL) {
+        ngx_destroy_pool(temp);
         return NGX_CONF_ERROR;
     }
 
     for (i = 0; i < n; ++i) {
-        hkeys[i].key.len = ngx_snprintf(buf, sizeof(buf) - 1, "%V@@%V", &k[i]->group, &k[i]->data_id) - buf;
+        hkeys[i].key.len = ngx_snprintf(buf, sizeof(buf) - 1, "%V@@%V", &k[i].group, &k[i].data_id) - buf;
         hkeys[i].key.data = buf;
-        hkeys[i].value = k[i];
+        hkeys[i].value = &k[i];
         hkeys[i].key_hash = ha.key(buf, hkeys[i].key.len);
     }
 
     if (ngx_hash_init(&ha, hkeys, n) != NGX_OK) {
+        ngx_destroy_pool(temp);
         return NGX_CONF_ERROR;
     }
     ncf->key_hash = ha.hash;
-    ncf->keys = NULL;
+    ngx_destroy_pool(temp);
     return NGX_CONF_OK;
 }
 
@@ -200,14 +200,12 @@ static char *ngx_nacos_conf_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf
     char *rv;
     ngx_int_t i;
     ngx_url_t u;
-    ngx_listening_t *ls;
     ngx_err_t err;
     ngx_nacos_main_conf_t *ncf, **mncf = conf;
 
     if (*mncf) {
         return "is duplicate";
     }
-    cJSON_InitHooks(NULL);
     ncf = *mncf = ngx_pcalloc(cf->pool, sizeof(*ncf));
     if (ncf == NULL) {
         return NGX_CONF_ERROR;
@@ -304,6 +302,11 @@ static char *ngx_nacos_conf_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf
     ngx_conf_init_uint_value(ncf->keys_bucket_size, 128);
     ncf->keys_bucket_size = ngx_align(ncf->keys_bucket_size, ngx_cacheline_size);
 
+    if (ngx_nacos_aux_init(cf) != NGX_OK) {
+        rv = NGX_CONF_ERROR;
+        goto end;
+    }
+
     ngx_memzero(&u, sizeof(ngx_url_t));
     u.url = ncf->udp_bind;
     u.listen = 1;
@@ -317,21 +320,7 @@ static char *ngx_nacos_conf_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf
         goto end;
     }
 
-    ls = ngx_create_listening(cf, u.addrs[0].sockaddr, u.addrs[0].socklen);
-    if (ls == NULL) {
-        rv = NGX_CONF_ERROR;
-        goto end;
-    }
-    ls->type = SOCK_DGRAM;// udp
-    ls->handler = ngx_nacos_udp_handler;
-    ls->addr_ntop = 1;
-    ls->pool_size = ncf->udp_pool_size;
-    ls->logp = ncf->error_log;
-    ls->log.data = &ls->addr_text;
-    ls->log.handler = ngx_nacos_log_error;
-    ls->servers = ncf;
-
-    ncf->pool = cf->pool;
+    ncf->udp_addr = u.addrs[0];
     end:
     *cf = pcf;
     return rv;
@@ -381,167 +370,10 @@ ngx_nacos_main_conf_t *ngx_nacos_get_main_conf(ngx_conf_t *cf) {
     return (ngx_nacos_main_conf_t *) cf->cycle->conf_ctx[ngx_nacos_module.index];
 }
 
-static ngx_nacos_key_t *ngx_nacos_hash_find_key(ngx_nacos_main_conf_t *mcf, u_char *k, ngx_connection_t *con) {
-    u_char * p, c;
-    ngx_flag_t valid;
-    ngx_uint_t hash;
-    ngx_nacos_key_t * r;
-
-    valid = 0;
-    hash = 0;
-    for (p = k; (c = *p); ++p) {
-        if (c >= 'A' && c <= 'Z') {
-            *p = c = (u_char) (c | 0x20);
-        } else if (c == '@' && *(p + 1) == '@') {
-            valid = 1;
-        }
-        hash = ngx_hash(hash, c);
-    }
-    if (!valid) {
-        ngx_log_error(NGX_LOG_WARN, con->log, 0, "receive udp msg from %V data name \"%s\" is invalid",
-                      &con->addr_text, k);
-        return NULL;
-    }
-
-    r = ngx_hash_find(mcf->key_hash, hash, (u_char *) k, p - k);
-    if (r == NULL) {
-        ngx_log_error(NGX_LOG_WARN, con->log, 0, "nacos udp dom  %s is unknown from:%V", k, &con->addr_text);
-        return NULL;
-    }
-    return r;
-}
-
-static void ngx_nacos_udp_handler(ngx_connection_t *c) {
-    ngx_nacos_main_conf_t *mcf;
-    size_t len, resp_len, key_len;
-    ngx_nacos_key_t * key;
-    cJSON *msg, *type, *d, *ref, *name;
-    char *tc, *tr, *oldAddr, *nAddr;
-    ngx_nacos_addr_resp_parser_t resp_parser;
-    ngx_str_t data;
-    ssize_t rc;
-
-    mcf = c->listening->servers;
-    data.len = c->buffer->last - c->buffer->pos;
-    data.data = c->buffer->pos;
-    d = NULL;
-    tr = NULL;
-
-    ngx_log_error(NGX_LOG_INFO, c->log, 0, "receive udp msg %l from %V", data.len, &c->addr_text);
-
-    msg = cJSON_ParseWithLength((char *) data.data, data.len);
-    if (msg == NULL) {
-        ngx_log_error(NGX_LOG_WARN, c->log, 0, "receive udp msg from %V: %l, %V", &c->addr_text, data.len, &data);
-        goto end;
-    }
-    type = cJSON_GetObjectItem(msg, "type");
-    ref = cJSON_GetObjectItem(msg, "lastRefTime");
-    d = cJSON_GetObjectItem(msg, "data");
-    if (type == NULL || ref == NULL || d == NULL) {
-        ngx_log_error(NGX_LOG_WARN, c->log, 0, "receive udp msg from %V absent type/lastRefTime/data",
-                      &c->addr_text);
-        goto end;
-    }
-
-    tc = cJSON_GetStringValue(type);
-    tr = cJSON_Print(ref);
-    if (tr == NULL) {
-        goto end;
-    }
-    if (ngx_strncmp(tc, "dom", 3) == 0) {
-        resp_len = ngx_snprintf(data.data, 64 * 1024, NACOS_DOM_RESP_FMT, tr) - data.data;
-        tc = cJSON_GetStringValue(d);
-        if (tc == NULL) {
-            d = NULL;
-            ngx_log_error(NGX_LOG_WARN, c->log, 0, "receive udp msg from %V data is not string", &c->addr_text);
-            goto end;
-        }
-        d = cJSON_Parse(tc);
-        if (d == NULL) {
-            ngx_log_error(NGX_LOG_WARN, c->log, 0, "receive udp msg from %V data is not json string",
-                          &c->addr_text);
-            goto end;
-        }
-
-        name = cJSON_GetObjectItem(d, "name");
-        if (name == NULL || !cJSON_IsString(name)) {
-            ngx_log_error(NGX_LOG_WARN, c->log, 0, "receive udp msg from %V data name is absent", &c->addr_text);
-            goto end;
-        }
-        tc = cJSON_GetStringValue(name);
-        key = ngx_nacos_hash_find_key(mcf, (u_char *) tc, c);
-        if (key != NULL) {
-            ngx_rwlock_rlock(&key->ctx->wrlock);
-            resp_parser.prev_version = key->ctx->version;
-            ngx_rwlock_unlock(&key->ctx->wrlock);
-
-            resp_parser.json = d;
-            resp_parser.log = c->log;
-            resp_parser.pool = c->pool;
-            tc = ngx_nacos_parse_addrs_from_json(&resp_parser);
-            if (tc == NULL) {
-                // maybe version not changed
-                goto end;
-            }
-            len = *(size_t *) tc;
-            nAddr = ngx_slab_alloc(key->sh, len);
-            if (nAddr == NULL) {
-                ngx_log_error(NGX_LOG_WARN, c->log, 0, "nacos no shared mem to available %V@@%V", &key->group,
-                              key->data_id);
-                goto end;
-            }
-            memcpy(nAddr, tc, len);
-
-            ngx_rwlock_wlock(&key->ctx->wrlock);
-            oldAddr = key->ctx->addrs;
-            key->ctx->version = resp_parser.current_version;
-            key->ctx->addrs = nAddr;
-            ngx_rwlock_unlock(&key->ctx->wrlock);
-            ngx_slab_free(key->sh, oldAddr);
-        } else {
-            ngx_log_error(NGX_LOG_WARN, c->log, 0, "nacos udp dom  %s is unknown from:%V", tc, &c->addr_text);
-        }
-    } else {
-        resp_len = ngx_snprintf(data.data, 64 * 1024, NACOS_UNKNOWN_RESP_FMT, tc) - data.data;
-        d = NULL;
-    }
-    rc = c->send(c, data.data, resp_len);
-    if (rc != (ssize_t) resp_len) {
-        // udp believe once send successfully
-        ngx_log_error(NGX_LOG_WARN, c->log, 0, "nacos send udp resp to %V error", &c->addr_text);
-        goto end;
-    }
-
-    end:
-
-    if (d != NULL) {
-        cJSON_Delete(d);
-    }
-    if (msg != NULL) {
-        cJSON_Delete(msg);
-    }
-    if (tr != NULL) {
-        cJSON_free(tr);
-    }
-    if (data.data != NULL) {
-        ngx_pfree(c->pool, data.data);
-    }
-    ngx_delete_udp_connection(c);
-    ngx_close_connection(c);
-}
-
-
-static u_char *ngx_nacos_log_error(ngx_log_t *log, u_char *buf, size_t len) {
-    return ngx_snprintf(buf, len, " while accepting new message on %V",
-                        log->data);
-}
-
-
 ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
     ngx_nacos_main_conf_t *mcf;
     ngx_uint_t i, n;
-    ngx_err_t err;
-    ngx_nacos_key_t * k, **key;
+    ngx_nacos_key_t * k;
     ngx_nacos_data_t tmp;
     ngx_int_t rc;
     ngx_str_t zone_name;
@@ -554,23 +386,23 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
         tmp.group = mcf->default_group;
     }
     if (tmp.data_id.len + tmp.group.len + 2 >= 512) {
-        ngx_conf_log_error(NGX_LOG_WARN, cf, err, "nacos data_id and group is too long");
+        ngx_conf_log_error(NGX_LOG_WARN, cf, 0, "nacos data_id and group is too long");
         return NGX_ERROR;
     }
 
-    if (mcf->keys == NULL) {
-        mcf->keys = ngx_array_create(cf->temp_pool, 16, sizeof(ngx_hash_key_t));
-        if (mcf->keys == NULL) {
+    if (mcf->keys.size == 0) {
+        if (ngx_array_init(&mcf->keys, cf->pool, 16, sizeof(*k)) != NGX_OK) {
             return NGX_ERROR;
         }
         mcf->cur_srv_index = rand() % mcf->server_list.nelts;
-    }
-    n = mcf->keys->nelts;
-    key = mcf->keys->elts;
-    for (i = 0; i < n; ++i) {
-        if (nacos_key_eq(*key[i], tmp)) {
-            *sub->key_ptr = key[i];
-            return NGX_OK;
+    } else {
+        n = mcf->keys.nelts;
+        k = mcf->keys.elts;
+        for (i = 0; i < n; ++i) {
+            if (nacos_key_eq(k[i], tmp)) {
+                *sub->key_ptr = &k[i];
+                return NGX_OK;
+            }
         }
     }
 
@@ -588,15 +420,11 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
         }
     }
 
-    key = ngx_array_push(mcf->keys);
-    if (key == NULL) {
-        return NGX_ERROR;
-    }
-
-    *key = k = ngx_palloc(cf->pool, sizeof(ngx_nacos_key_t));
+    k = ngx_array_push(&mcf->keys);
     if (k == NULL) {
         return NGX_ERROR;
     }
+
     k->data_id = tmp.data_id;
     k->group = tmp.group;
     k->ctx = ngx_palloc(cf->temp_pool, sizeof(ngx_nacos_key_ctx_t));

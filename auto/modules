@@ -1283,7 +1283,7 @@ if [ $USE_PCRE = YES ]; then
 fi
 
 
-modules="$CORE_MODULES $EVENT_MODULES"
+modules="$CORE_MODULES $EVENT_MODULES $AUXILIARY_MODULES"
 
 
 # thread pool module should be initialized after events

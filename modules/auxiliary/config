@@ -1,0 +1,12 @@
+ngx_module_type=AUXILIARY
+ngx_module_name=ngx_auxiliary_module
+ngx_module_incs=modules/auxiliary
+ngx_module_deps=modules/auxiliary/ngx_auxiliary_module.h
+ngx_module_srcs=modules/auxiliary/ngx_auxiliary_module.c
+ngx_module_libs=
+ngx_module_order=
+ngx_module_link=ADDON
+
+. auto/module
+
+have=NGX_HAVE_AUXILIARY . auto/have

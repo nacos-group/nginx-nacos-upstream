@@ -504,5 +504,5 @@
 
 
 #ifndef NGX_DEBUG
-#define NGX_DEBUG  1
+#define NGX_DEBUG  0
 #endif

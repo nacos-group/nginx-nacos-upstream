@@ -314,7 +314,7 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
         parse->offset = 0;
         parse->limit = len;
     }
-    return NGX_OK;
+    return NGX_AGAIN;
 }
 
 

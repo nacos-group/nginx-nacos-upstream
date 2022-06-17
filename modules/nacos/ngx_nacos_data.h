@@ -36,7 +36,7 @@ ngx_int_t ngx_nacos_fetch_net_data(ngx_nacos_main_conf_t *mcf, ngx_nacos_data_t 
 
 ngx_int_t ngx_nacos_deep_copy_addrs(char *src, ngx_array_t *dist);
 
-ngx_int_t ngx_nacos_update_addrs(ngx_nacos_key_t *key, const char *adr, ngx_log_t *log);
+ngx_int_t ngx_nacos_update_addrs(ngx_nacos_main_conf_t *mcf, ngx_nacos_key_t *key, const char *adr, ngx_log_t *log);
 
 
 #endif //NGINX_NACOS_NGX_NACOS_DATA_H

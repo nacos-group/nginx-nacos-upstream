@@ -409,7 +409,7 @@ static ngx_int_t ngx_nacos_handle_sub_json(yajl_val json, ngx_nacos_key_t *key,
     resp_parser.prev_version = ngx_nacos_addrs_version(key);
     adr = ngx_nacos_parse_addrs_from_json(&resp_parser);
     if (adr != NULL) {
-        rc = ngx_nacos_update_addrs(key, adr, pool->log);
+        rc = ngx_nacos_update_addrs(aux_ctx.ncf, key, adr, pool->log);
         if (rc == NGX_OK) {
             ngx_log_error(NGX_LOG_INFO, pool->log, 0,
                           "nacos service %V@@%V is updated!!!", &key->group, &key->data_id);
@@ -429,9 +429,7 @@ static ngx_int_t ngx_nacos_read_sub_resp(ngx_aux_nacos_conn_t *nc, ngx_event_t *
     ngx_int_t rc;
     ngx_uint_t next_req_time;
     char buf[1];
-    ngx_pool_t *temp;
     yajl_val json;
-    ngx_nacos_key_t * key;
     ngx_connection_t *c = nc->peer.connection;
 
     if (ev->timedout) {
@@ -501,27 +499,15 @@ static ngx_int_t ngx_nacos_read_sub_resp(ngx_aux_nacos_conn_t *nc, ngx_event_t *
                    nc->parser.status);
     c->requests++;
 
-    temp = NULL;
     if (nc->parser.json_parser) {
         json = yajl_tree_finish_get(nc->parser.json_parser);
         if (json == NULL) {
             goto free;
         }
-        key = aux_ctx.ncf->keys.elts;
-        key += aux_ctx.key_idx;
-        temp = ngx_create_pool(512, c->log);
-        if (temp == NULL) {
-            goto free;
-        }
-        ngx_nacos_handle_sub_json(json, key, temp, (char *) nc->buf, NC_BUF_SIZE);
+        ngx_log_error(NGX_LOG_INFO, c->log, 0, "http connection received json response");
     }
 
     free:
-    if (temp != NULL) {
-        ngx_destroy_pool(temp);
-    }
-
-
     if (nc->parser.json_parser) {
         yajl_tree_free_parser(nc->parser.json_parser);
         nc->parser.json_parser = NULL;

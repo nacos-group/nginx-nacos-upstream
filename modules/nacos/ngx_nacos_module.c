@@ -296,7 +296,7 @@ static char *ngx_nacos_conf_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf
         memcpy(ncf->udp_bind.data + ncf->udp_ip.len + 1, ncf->udp_port.data, ncf->udp_port.len);
     }
 
-    ngx_conf_init_size_value(ncf->key_zone_size, 16384);
+    ngx_conf_init_size_value(ncf->key_zone_size, 4 << 20);// 4M
     ngx_conf_init_size_value(ncf->udp_pool_size, 8192);
     ngx_conf_init_uint_value(ncf->keys_hash_max_size, 128);
     ngx_conf_init_uint_value(ncf->keys_bucket_size, 128);
@@ -375,8 +375,8 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
     ngx_uint_t i, n;
     ngx_nacos_key_t * k;
     ngx_nacos_data_t tmp;
-    ngx_int_t rc;
     ngx_str_t zone_name;
+    ngx_int_t rc;
 
     mcf = ngx_nacos_get_main_conf(cf);
 
@@ -395,6 +395,14 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
             return NGX_ERROR;
         }
         mcf->cur_srv_index = rand() % mcf->server_list.nelts;
+        ngx_str_set(&zone_name, "nacos_zone");
+        mcf->zone = ngx_shared_memory_add(cf, &zone_name, mcf->key_zone_size, &ngx_nacos_module);
+        if (mcf->zone == NULL) {
+            return NGX_ERROR;
+        }
+        mcf->zone->noreuse = 1;
+        mcf->zone->data = mcf;
+        mcf->zone->init = ngx_nacos_init_key_zone;
     } else {
         n = mcf->keys.nelts;
         k = mcf->keys.elts;
@@ -434,43 +442,41 @@ ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub) {
     k->ctx->wrlock = 0;
     k->ctx->version = tmp.version;
     k->ctx->addrs = tmp.adr;
-    zone_name.len = tmp.data_id.len + tmp.group.len + 2;
-    zone_name.data = ngx_palloc(cf->pool, zone_name.len + 1);
-    ngx_snprintf(zone_name.data, zone_name.len + 1, "%V@@%V", &tmp.group, &tmp.data_id);
-    k->zone = ngx_shared_memory_add(cf, &zone_name, mcf->key_zone_size, &ngx_nacos_module);
-    if (k->zone == NULL) {
-        return NGX_ERROR;
-    }
-    k->zone->noreuse = 1;
-    k->zone->data = k;
-    k->zone->init = ngx_nacos_init_key_zone;
+    k->use_shared = 0;
     *sub->key_ptr = k;
     return NGX_OK;
 }
 
 static ngx_int_t ngx_nacos_init_key_zone(ngx_shm_zone_t *zone, void *data) {
+    ngx_nacos_main_conf_t *mcf;
     ngx_nacos_key_t * key;
     ngx_nacos_key_ctx_t *ctx;
-    ngx_uint_t len;
+    ngx_uint_t len, i, n;
     char *c;
-    key = zone->data;
-    ctx = key->ctx;
-    c = ctx->addrs;
 
-    len = *(ngx_uint_t *) c;
-    c += sizeof(ngx_uint_t);
-    key->sh = (ngx_slab_pool_t *) zone->shm.addr;
-    key->ctx = ngx_slab_alloc_locked(key->sh, sizeof(*ctx));
-    if (key->ctx == NULL) {
-        return NGX_ERROR;
+    mcf = zone->data;
+    mcf->sh = (ngx_slab_pool_t *) zone->shm.addr;
+    key = mcf->keys.elts;
+    n = mcf->keys.nelts;
+
+    for (i = 0; i < n; ++i) {
+        ctx = key[i].ctx;
+        c = ctx->addrs;
+        len = *(ngx_uint_t *) c;
+        c += sizeof(ngx_uint_t);
+        key[i].use_shared = 1;
+        key[i].ctx = ngx_slab_alloc_locked(mcf->sh, sizeof(*ctx));
+        if (key[i].ctx == NULL) {
+            return NGX_ERROR;
+        }
+        key[i].ctx->addrs = ngx_slab_alloc_locked(mcf->sh, len);
+        if (key[i].ctx->addrs == NULL) {
+            return NGX_ERROR;
+        }
+        key[i].ctx->wrlock = ctx->wrlock;
+        key[i].ctx->version = ctx->version;
+        memcpy(key[i].ctx->addrs, c, len);
     }
-    key->ctx->addrs = ngx_slab_alloc_locked(key->sh, len);
-    if (key->ctx->addrs == NULL) {
-        return NGX_ERROR;
-    }
-    key->ctx->wrlock = ctx->wrlock;
-    key->ctx->version = ctx->version;
-    memcpy(key->ctx->addrs, c, len);
     return NGX_OK;
 }
 
@@ -480,13 +486,13 @@ ngx_int_t nax_nacos_get_addrs(ngx_nacos_key_t *key, ngx_uint_t *version, ngx_arr
     ngx_nacos_key_ctx_t *ctx = key->ctx;
     old_ver = *version;
     rc = NGX_DECLINED;
-    if (key->sh) {
+    if (key->use_shared) {
         ngx_rwlock_rlock(&ctx->wrlock);
     }
     if (old_ver != (new_ver = ctx->version)) {
         rc = ngx_nacos_deep_copy_addrs(ctx->addrs, out_addrs);
     }
-    if (key->sh) {
+    if (key->use_shared) {
         ngx_rwlock_unlock(&ctx->wrlock);
     }
     *version = new_ver;

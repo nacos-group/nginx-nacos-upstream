@@ -439,7 +439,7 @@ ngx_int_t ngx_nacos_deep_copy_addrs(char *src, ngx_array_t *dist) {
     return NGX_OK;
 }
 
-ngx_int_t ngx_nacos_update_addrs(ngx_nacos_key_t *key, const char *adr, ngx_log_t *log) {
+ngx_int_t ngx_nacos_update_addrs(ngx_nacos_main_conf_t *mcf, ngx_nacos_key_t *key, const char *adr, ngx_log_t *log) {
     size_t len;
     ngx_uint_t version;
     char *oldAddr, *nAddr;
@@ -447,13 +447,13 @@ ngx_int_t ngx_nacos_update_addrs(ngx_nacos_key_t *key, const char *adr, ngx_log_
     len = *(size_t *) adr;
     version = *(ngx_uint_t *) (adr + sizeof(size_t));
 
-    if (key->sh == NULL) {
+    if (mcf->sh == NULL) {
         ngx_log_error(NGX_LOG_EMERG, log, 0, "nacos no shared mem  %V@@%V", &key->group,
                       key->data_id);
         return NGX_ERROR;
     }
 
-    nAddr = ngx_slab_alloc(key->sh, len);
+    nAddr = ngx_slab_alloc(mcf->sh, len);
     if (nAddr == NULL) {
         ngx_log_error(NGX_LOG_WARN, log, 0, "nacos no shared mem to available %V@@%V", &key->group,
                       key->data_id);
@@ -466,6 +466,6 @@ ngx_int_t ngx_nacos_update_addrs(ngx_nacos_key_t *key, const char *adr, ngx_log_
     key->ctx->version = version;
     key->ctx->addrs = nAddr;
     ngx_rwlock_unlock(&key->ctx->wrlock);
-    ngx_slab_free(key->sh, oldAddr);
+    ngx_slab_free(mcf->sh, oldAddr);
     return NGX_OK;
 }

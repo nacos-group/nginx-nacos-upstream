@@ -20,8 +20,7 @@ typedef struct {
 typedef struct {
     ngx_str_t data_id;
     ngx_str_t group;
-    ngx_shm_zone_t *zone;
-    ngx_slab_pool_t *sh;
+    ngx_flag_t use_shared;
     ngx_nacos_key_ctx_t *ctx;
 } ngx_nacos_key_t;
 
@@ -46,6 +45,8 @@ typedef struct {
     ngx_str_t cache_dir;
 
     ngx_array_t keys; //  ngx_nacos_key_t *
+    ngx_shm_zone_t *zone;
+    ngx_slab_pool_t *sh;
     ngx_hash_t *key_hash;
     ngx_addr_t udp_addr;
 } ngx_nacos_main_conf_t;
@@ -60,11 +61,11 @@ ngx_nacos_addrs_version(ngx_nacos_key_t *key) {
     ngx_nacos_key_ctx_t *ctx;
     ctx = key->ctx;
 
-    if (key->sh) {
+    if (key->use_shared) {
         ngx_rwlock_rlock(&ctx->wrlock);
     }
     v = ctx->version;
-    if (key->sh) {
+    if (key->use_shared) {
         ngx_rwlock_unlock(&ctx->wrlock);
     }
     return v;

@@ -3,7 +3,7 @@ project(nginx_nacos C)
 
 set(CMAKE_C_STANDARD 90)
 
-set(CMAKE_C_FLAGS "-Werror -Wreturn-type")
+set(CMAKE_C_FLAGS "-W -Wall -Wpointer-arith -Wno-unused-parameter -Werror -Wreturn-type")
 
 set(NGX_C_FILES src/core/nginx.c
         src/core/ngx_log.c

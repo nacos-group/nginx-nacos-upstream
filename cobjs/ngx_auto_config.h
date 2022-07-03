@@ -1,4 +1,4 @@
-#define NGX_CONFIGURE " --add-module=modules/auxiliary --add-module=modules/nacos"
+#define NGX_CONFIGURE " --add-module=modules/auxiliary --add-module=modules/nacos --with-http_ssl_module"
 
 #ifndef NGX_COMPILER
 #define NGX_COMPILER  "gcc 9.4.0 (Ubuntu 9.4.0-1ubuntu1~20.04.1) "
@@ -383,6 +383,11 @@
 #endif
 
 
+#ifndef NGX_HTTP_SSL
+#define NGX_HTTP_SSL  1
+#endif
+
+
 #ifndef NGX_HTTP_X_FORWARDED_FOR
 #define NGX_HTTP_X_FORWARDED_FOR  1
 #endif
@@ -410,6 +415,16 @@
 
 #ifndef NGX_HAVE_PCRE_JIT
 #define NGX_HAVE_PCRE_JIT  1
+#endif
+
+
+#ifndef NGX_OPENSSL
+#define NGX_OPENSSL  1
+#endif
+
+
+#ifndef NGX_SSL
+#define NGX_SSL  1
 #endif
 
 

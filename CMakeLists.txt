@@ -134,7 +134,16 @@ set(NGX_INC_DIR src/core
         src/http/modules
         cobjs)
 
+set(NGX_LIBS pcre pthread z dl crypt)
+set(OPENSSL YES)
+
 set(NACOS YES)
+if (OPENSSL)
+    list(APPEND NGX_C_FILES src/event/ngx_event_openssl.c
+            src/event/ngx_event_openssl_stapling.c
+            src/http/modules/ngx_http_ssl_module.c)
+    list(APPEND NGX_LIBS ssl crypto)
+endif ()
 
 if (NACOS)
     list(APPEND NGX_INC_DIR modules/auxiliary)
@@ -164,4 +173,4 @@ list(APPEND NGX_C_FILES cobjs/ngx_modules.c)
 
 add_executable(nginx_nacos ${NGX_C_FILES} ${NGX_H_FILES})
 target_include_directories(nginx_nacos PRIVATE ${NGX_INC_DIR})
-target_link_libraries(nginx_nacos pcre pthread z dl crypt)
+target_link_libraries(nginx_nacos ${NGX_LIBS})

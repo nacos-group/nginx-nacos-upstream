@@ -18,6 +18,7 @@ extern ngx_module_t  ngx_http_module;
 extern ngx_module_t  ngx_http_core_module;
 extern ngx_module_t  ngx_http_log_module;
 extern ngx_module_t  ngx_http_upstream_module;
+extern ngx_module_t  ngx_http_v2_module;
 extern ngx_module_t  ngx_http_static_module;
 extern ngx_module_t  ngx_http_autoindex_module;
 extern ngx_module_t  ngx_http_index_module;
@@ -37,6 +38,7 @@ extern ngx_module_t  ngx_http_proxy_module;
 extern ngx_module_t  ngx_http_fastcgi_module;
 extern ngx_module_t  ngx_http_uwsgi_module;
 extern ngx_module_t  ngx_http_scgi_module;
+extern ngx_module_t  ngx_http_grpc_module;
 extern ngx_module_t  ngx_http_memcached_module;
 extern ngx_module_t  ngx_http_empty_gif_module;
 extern ngx_module_t  ngx_http_browser_module;
@@ -50,6 +52,7 @@ extern ngx_module_t  ngx_http_nacos_module;
 extern ngx_module_t  ngx_http_write_filter_module;
 extern ngx_module_t  ngx_http_header_filter_module;
 extern ngx_module_t  ngx_http_chunked_filter_module;
+extern ngx_module_t  ngx_http_v2_filter_module;
 extern ngx_module_t  ngx_http_range_header_filter_module;
 extern ngx_module_t  ngx_http_gzip_filter_module;
 extern ngx_module_t  ngx_http_postpone_filter_module;
@@ -76,6 +79,7 @@ ngx_module_t *ngx_modules[] = {
     &ngx_http_core_module,
     &ngx_http_log_module,
     &ngx_http_upstream_module,
+    &ngx_http_v2_module,
     &ngx_http_static_module,
     &ngx_http_autoindex_module,
     &ngx_http_index_module,
@@ -95,6 +99,7 @@ ngx_module_t *ngx_modules[] = {
     &ngx_http_fastcgi_module,
     &ngx_http_uwsgi_module,
     &ngx_http_scgi_module,
+    &ngx_http_grpc_module,
     &ngx_http_memcached_module,
     &ngx_http_empty_gif_module,
     &ngx_http_browser_module,
@@ -108,6 +113,7 @@ ngx_module_t *ngx_modules[] = {
     &ngx_http_write_filter_module,
     &ngx_http_header_filter_module,
     &ngx_http_chunked_filter_module,
+    &ngx_http_v2_filter_module,
     &ngx_http_range_header_filter_module,
     &ngx_http_gzip_filter_module,
     &ngx_http_postpone_filter_module,
@@ -136,6 +142,7 @@ char *ngx_module_names[] = {
     "ngx_http_core_module",
     "ngx_http_log_module",
     "ngx_http_upstream_module",
+    "ngx_http_v2_module",
     "ngx_http_static_module",
     "ngx_http_autoindex_module",
     "ngx_http_index_module",
@@ -155,6 +162,7 @@ char *ngx_module_names[] = {
     "ngx_http_fastcgi_module",
     "ngx_http_uwsgi_module",
     "ngx_http_scgi_module",
+    "ngx_http_grpc_module",
     "ngx_http_memcached_module",
     "ngx_http_empty_gif_module",
     "ngx_http_browser_module",
@@ -168,6 +176,7 @@ char *ngx_module_names[] = {
     "ngx_http_write_filter_module",
     "ngx_http_header_filter_module",
     "ngx_http_chunked_filter_module",
+    "ngx_http_v2_filter_module",
     "ngx_http_range_header_filter_module",
     "ngx_http_gzip_filter_module",
     "ngx_http_postpone_filter_module",

@@ -1,4 +1,4 @@
-#define NGX_CONFIGURE " --add-module=modules/auxiliary --add-module=modules/nacos --with-http_ssl_module"
+#define NGX_CONFIGURE " --with-http_v2_module --with-http_ssl_module --add-module=modules/auxiliary --add-module=modules/nacos --prefix=.. --conf-path=conf/my.conf --error-log-path=cmake-build-debug/logs/error.log --pid-path=cmake-build-debug/logs/nginx.pid --lock-path=cmake-build-debug/logs/nginx.lock --http-log-path=cmake-build-debug/logs/access.log --http-client-body-temp-path=cmake-build-debug/client_body_temp --http-proxy-temp-path=cmake-build-debug/proxy_temp --http-fastcgi-temp-path=cmake-build-debug/fastcgi_temp --http-uwsgi-temp-path=cmake-build-debug/uwsgi_temp --http-scgi-temp-path=cmake-build-debug/scgi_temp"
 
 #ifndef NGX_COMPILER
 #define NGX_COMPILER  "gcc 9.4.0 (Ubuntu 9.4.0-1ubuntu1~20.04.1) "
@@ -373,6 +373,16 @@
 #endif
 
 
+#ifndef NGX_HTTP_V2
+#define NGX_HTTP_V2  1
+#endif
+
+
+#ifndef NGX_HTTP_HEADERS
+#define NGX_HTTP_HEADERS  1
+#endif
+
+
 #ifndef NGX_CRYPT
 #define NGX_CRYPT  1
 #endif
@@ -517,7 +527,3 @@
 #define NGX_GROUP  "nogroup"
 #endif
 
-
-#ifndef NGX_DEBUG
-#define NGX_DEBUG  0
-#endif

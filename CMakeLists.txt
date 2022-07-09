@@ -3,7 +3,7 @@ project(nginx_nacos C)
 
 set(CMAKE_C_STANDARD 90)
 
-set(CMAKE_C_FLAGS "-W -Wall -Wpointer-arith -Wno-unused-parameter -Werror -Wreturn-type")
+set(CMAKE_C_FLAGS "-E -W -Wall -Wpointer-arith -Wno-unused-parameter -Werror -Wreturn-type")
 
 set(NGX_C_FILES src/core/nginx.c
         src/core/ngx_log.c
@@ -72,6 +72,8 @@ set(NGX_C_FILES src/core/nginx.c
         src/os/unix/ngx_linux_init.c
         src/event/modules/ngx_epoll_module.c
         src/os/unix/ngx_linux_sendfile_chain.c
+        src/event/ngx_event_openssl.c
+        src/event/ngx_event_openssl_stapling.c
         src/core/ngx_regex.c
         src/http/ngx_http.c
         src/http/ngx_http_core_module.c
@@ -88,6 +90,7 @@ set(NGX_C_FILES src/core/nginx.c
         src/http/ngx_http_write_filter_module.c
         src/http/ngx_http_header_filter_module.c
         src/http/modules/ngx_http_chunked_filter_module.c
+        src/http/v2/ngx_http_v2_filter_module.c
         src/http/modules/ngx_http_range_filter_module.c
         src/http/modules/ngx_http_gzip_filter_module.c
         src/http/ngx_http_postpone_filter_module.c
@@ -97,6 +100,12 @@ set(NGX_C_FILES src/core/nginx.c
         src/http/modules/ngx_http_headers_filter_module.c
         src/http/ngx_http_copy_filter_module.c
         src/http/modules/ngx_http_not_modified_filter_module.c
+        src/http/v2/ngx_http_v2.c
+        src/http/v2/ngx_http_v2_table.c
+        src/http/v2/ngx_http_v2_encode.c
+        src/http/v2/ngx_http_v2_huff_decode.c
+        src/http/v2/ngx_http_v2_huff_encode.c
+        src/http/v2/ngx_http_v2_module.c
         src/http/modules/ngx_http_static_module.c
         src/http/modules/ngx_http_autoindex_module.c
         src/http/modules/ngx_http_index_module.c
@@ -111,10 +120,12 @@ set(NGX_C_FILES src/core/nginx.c
         src/http/modules/ngx_http_split_clients_module.c
         src/http/modules/ngx_http_referer_module.c
         src/http/modules/ngx_http_rewrite_module.c
+        src/http/modules/ngx_http_ssl_module.c
         src/http/modules/ngx_http_proxy_module.c
         src/http/modules/ngx_http_fastcgi_module.c
         src/http/modules/ngx_http_uwsgi_module.c
         src/http/modules/ngx_http_scgi_module.c
+        src/http/modules/ngx_http_grpc_module.c
         src/http/modules/ngx_http_memcached_module.c
         src/http/modules/ngx_http_empty_gif_module.c
         src/http/modules/ngx_http_browser_module.c
@@ -132,9 +143,10 @@ set(NGX_INC_DIR src/core
         src/os/unix
         src/http
         src/http/modules
+        src/http/v2
         cobjs)
 
-set(NGX_LIBS pcre pthread z dl crypt)
+set(NGX_LIBS dl pthread crypt pcre ssl crypto dl z)
 set(OPENSSL YES)
 
 set(NACOS YES)

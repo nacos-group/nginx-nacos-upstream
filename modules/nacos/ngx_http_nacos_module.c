@@ -269,12 +269,15 @@ static ngx_int_t ngx_http_nacos_init_upstream(ngx_conf_t *cf, ngx_http_upstream_
         return NGX_ERROR;
     }
 
-    new_cf = *cf;
-    new_cf.pool = pool;
-    if (ncf->original_init_upstream(&new_cf, peers->us) != NGX_OK) {
-        ngx_destroy_pool(pool);
-        return NGX_ERROR;
+    if (peers->addrs.nelts > 0) {
+        new_cf = *cf;
+        new_cf.pool = pool;
+        if (ncf->original_init_upstream(&new_cf, peers->us) != NGX_OK) {
+            ngx_destroy_pool(pool);
+            return NGX_ERROR;
+        }
     }
+
     us->peer.init = ngx_http_nacos_init_peers;
     us->peer.data = peers;
     return NGX_OK;

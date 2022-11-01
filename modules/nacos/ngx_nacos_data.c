@@ -132,7 +132,7 @@ ngx_int_t ngx_nacos_fetch_disk_data(ngx_nacos_main_conf_t *mcf, ngx_nacos_data_t
                           &filename);
             goto err_read;
         } else if (rd == 0) {
-            ngx_log_error(NGX_LOG_EMERG, pool->log, err, "nacos %s cache file \"%V\" EOF", ngx_read_fd_n,
+            ngx_log_error(NGX_LOG_EMERG, pool->log, 0, "nacos %s cache file \"%V\" EOF", ngx_read_fd_n,
                           &filename);
             goto err_read;
         }

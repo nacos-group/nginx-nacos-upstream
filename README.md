@@ -15,9 +15,10 @@ nacos {
     default_group DEFAULT_GROUP; # 默认的nacos group name
     cache_dir cmake-build-debug/nacos/;
 }
+
 http {
     upstream s {
-        use_nacos_address data_id=cc group=aaa; # 使用nacos ip
+        use_nacos_address data_id=springmvc-nacos-demo; # 如果provider使用的spring，data_id 要和 spring.application.name一致
     }
     server {
         # ... other config

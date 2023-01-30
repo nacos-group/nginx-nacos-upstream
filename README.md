@@ -18,7 +18,9 @@ nacos {
 
 http {
     upstream s {
-        use_nacos_address data_id=springmvc-nacos-demo; # 如果provider使用的spring，data_id 要和 spring.application.name一致
+        # 如果provider使用的spring，data_id 要和 spring.application.name一致
+        # 不知道 provider 端怎么写请参考 https://github.com/zhwaaaaaa/springmvc-nacos-registry
+        use_nacos_address data_id=springmvc-nacos-demo;
     }
     server {
         # ... other config

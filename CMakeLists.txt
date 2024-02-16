@@ -3,7 +3,8 @@ project(nginx_nacos C)
 
 set(CMAKE_C_STANDARD 90)
 
-set(CMAKE_C_FLAGS "-W -Wall -Wpointer-arith -Wno-unused-parameter -Werror -Wreturn-type")
+set(CMAKE_C_FLAGS "-W -Wall -Wpointer-arith -Wno-unused-parameter -Werror=uninitialized -Werror -Wreturn-type -Wno-deprecated-declarations")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -W -Wall -Wno-unused-parameter -Werror=uninitialized")
 
 set(NGX_C_FILES src/core/nginx.c
         src/core/ngx_log.c
@@ -69,9 +70,6 @@ set(NGX_C_FILES src/core/nginx.c
         src/os/unix/ngx_user.c
         src/os/unix/ngx_dlopen.c
         src/os/unix/ngx_process_cycle.c
-        src/os/unix/ngx_linux_init.c
-        src/event/modules/ngx_epoll_module.c
-        src/os/unix/ngx_linux_sendfile_chain.c
         src/event/ngx_event_openssl.c
         src/event/ngx_event_openssl_stapling.c
         src/core/ngx_regex.c
@@ -146,7 +144,7 @@ set(NGX_INC_DIR src/core
         src/http/v2
         cobjs)
 
-set(NGX_LIBS dl pthread crypt pcre ssl crypto dl z)
+set(NGX_LIBS dl pthread pcre z)
 set(OPENSSL YES)
 
 set(NACOS YES)
@@ -154,19 +152,30 @@ if (OPENSSL)
     list(APPEND NGX_C_FILES src/event/ngx_event_openssl.c
             src/event/ngx_event_openssl_stapling.c
             src/http/modules/ngx_http_ssl_module.c)
-    list(APPEND NGX_LIBS ssl crypto)
+    find_package(OpenSSL REQUIRED)
+    list(APPEND NGX_INC_DIR ${OPENSSL_INCLUDE_DIR})
+    list(APPEND NGX_LIBS ${OPENSSL_LIBRARIES})
+
 endif ()
 
 if (NACOS)
-    list(APPEND NGX_INC_DIR modules/auxiliary)
+    list(APPEND NGX_INC_DIR modules/auxiliary /usr/local/include)
     list(APPEND NGX_C_FILES modules/auxiliary/ngx_auxiliary_module.c)
     list(APPEND NGX_INC_DIR modules/nacos)
+    list(APPEND NGX_LINK_DIR /usr/local/lib)
+    list(APPEND NGX_LIBS protobuf protobuf-c)
     list(APPEND NGX_C_FILES
             modules/nacos/ngx_nacos_module.c
             modules/nacos/ngx_nacos_aux.c
             modules/nacos/ngx_nacos_http_parse.c
             modules/nacos/ngx_nacos_data.c
-            modules/nacos/ngx_http_nacos_module.c)
+            modules/nacos/ngx_http_nacos_upstream_module.c
+            modules/nacos/ngx_http_nacos_config_module.c
+            modules/nacos/ngx_nacos_udp.c
+            modules/nacos/ngx_nacos_grpc.c
+            modules/nacos/nacos_grpc_service.pb-c.c
+            modules/nacos/any.pb-c.c
+            )
 
     list(APPEND NGX_C_FILES
             modules/nacos/yaij/yajl.c
@@ -181,8 +190,27 @@ if (NACOS)
             )
 endif ()
 
+
+if (CMAKE_HOST_SYSTEM_NAME MATCHES "Linux")
+    list(APPEND NGX_C_FILES
+            src/os/unix/ngx_linux_init.c
+            src/event/modules/ngx_epoll_module.c
+            src/os/unix/ngx_linux_sendfile_chain.c)
+    list(APPEND NGX_LIBS crypt)
+elseif (CMAKE_HOST_SYSTEM_NAME MATCHES "Darwin")
+    list(APPEND NGX_C_FILES
+            src/os/unix/ngx_darwin_init.c
+            src/event/modules/ngx_kqueue_module.c
+            src/os/unix/ngx_darwin_sendfile_chain.c)
+    list(APPEND NGX_INC_DIR /usr/local/Cellar/pcre/8.44/include)
+else ()
+endif ()
+
 list(APPEND NGX_C_FILES cobjs/ngx_modules.c)
+
+message(STATUS ${NGX_LIBS})
 
 add_executable(nginx_nacos ${NGX_C_FILES} ${NGX_H_FILES})
 target_include_directories(nginx_nacos PRIVATE ${NGX_INC_DIR})
+target_link_directories(nginx_nacos PRIVATE ${NGX_LINK_DIR})
 target_link_libraries(nginx_nacos ${NGX_LIBS})

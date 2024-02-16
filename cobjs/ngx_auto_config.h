@@ -1,7 +1,7 @@
 #define NGX_CONFIGURE " --with-http_v2_module --with-http_ssl_module --add-module=modules/auxiliary --add-module=modules/nacos --prefix=.. --conf-path=conf/my.conf --error-log-path=cmake-build-debug/logs/error.log --pid-path=cmake-build-debug/logs/nginx.pid --lock-path=cmake-build-debug/logs/nginx.lock --http-log-path=cmake-build-debug/logs/access.log --http-client-body-temp-path=cmake-build-debug/client_body_temp --http-proxy-temp-path=cmake-build-debug/proxy_temp --http-fastcgi-temp-path=cmake-build-debug/fastcgi_temp --http-uwsgi-temp-path=cmake-build-debug/uwsgi_temp --http-scgi-temp-path=cmake-build-debug/scgi_temp"
 
 #ifndef NGX_COMPILER
-#define NGX_COMPILER  "gcc 9.4.0 (Ubuntu 9.4.0-1ubuntu1~20.04.1) "
+#define NGX_COMPILER  "clang 14.0.0-1ubuntu1.1"
 #endif
 
 
@@ -268,8 +268,8 @@
 #endif
 
 
-#ifndef NGX_SYS_NERR
-#define NGX_SYS_NERR  135
+#ifndef NGX_HAVE_STRERRORDESC_NP
+#define NGX_HAVE_STRERRORDESC_NP  1
 #endif
 
 

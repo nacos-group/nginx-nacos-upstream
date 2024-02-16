@@ -11,23 +11,41 @@ ngx_module_srcs="modules/nacos/yaij/yajl.c  \
     modules/nacos/yaij/yajl_parser.c  \
     modules/nacos/yaij/yajl_tree.c  \
     modules/nacos/yaij/yajl_version.c  \
-    modules/nacos/ngx_nacos_aux.c    \
-    modules/nacos/ngx_nacos_http_parse.c   \
-    modules/nacos/ngx_nacos_data.c   \
-    modules/nacos/ngx_nacos_module.c"
+    modules/nacos/ngx_nacos_module.c  \
+    modules/nacos/ngx_nacos_aux.c  \
+    modules/nacos/ngx_nacos_http_parse.c  \
+    modules/nacos/ngx_nacos_data.c  \
+    modules/nacos/ngx_nacos_udp.c \
+    modules/nacos/ngx_nacos_grpc.c \
+    modules/nacos/nacos_grpc_service.pb-c.c \
+    modules/nacos/any.pb-c.c"
+
+ngx_module_libs="-lprotobuf -lprotobuf-c"
+ngx_module_order=
+ngx_module_link=ADDON
+
+. auto/module
+
+# =============== http upstream =============================
+
+ngx_module_type=HTTP
+ngx_module_name=ngx_http_nacos_upstream_module
+ngx_module_incs=
+ngx_module_deps=
+ngx_module_srcs=modules/nacos/ngx_http_nacos_upstream_module.c
 ngx_module_libs=
 ngx_module_order=
 ngx_module_link=ADDON
 
 . auto/module
 
-# =============== http =============================
+# =============== http config =============================
 
 ngx_module_type=HTTP
-ngx_module_name=ngx_http_nacos_module
+ngx_module_name=ngx_http_nacos_config_module
 ngx_module_incs=
 ngx_module_deps=
-ngx_module_srcs=modules/nacos/ngx_http_nacos_module.c
+ngx_module_srcs=modules/nacos/ngx_http_nacos_config_module.c
 ngx_module_libs=
 ngx_module_order=
 ngx_module_link=ADDON

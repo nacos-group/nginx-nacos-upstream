@@ -2,8 +2,20 @@
 // Created by dear on 22-5-20.
 //
 
+#include <ngx_config.h>
+#include <ngx_core.h>
+#include <ngx_http.h>
 #include <ngx_nacos.h>
-#include <ngx_http_nacos.h>
+#include <ngx_nacos_data.h>
+
+
+typedef struct {
+    ngx_http_upstream_srv_conf_t *uscf;
+    ngx_http_upstream_init_pt original_init_upstream;
+    ngx_str_t data_id;
+    ngx_str_t group;
+} ngx_http_nacos_srv_conf_t;
+
 
 typedef struct {
     ngx_pool_t *pool;
@@ -72,7 +84,7 @@ static ngx_command_t cmds[] = {
         ngx_null_command
 };
 
-ngx_module_t ngx_http_nacos_module = {
+ngx_module_t ngx_http_nacos_upstream_module = {
         NGX_MODULE_V1,
         &ngx_http_nacos_module_ctx,
         cmds,
@@ -233,7 +245,7 @@ static ngx_int_t ngx_http_nacos_init_upstream(ngx_conf_t *cf, ngx_http_upstream_
     ngx_http_nacos_srv_conf_t *ncf;
     ngx_conf_t new_cf;
 
-    ncf = ngx_http_conf_upstream_srv_conf(us, ngx_http_nacos_module);
+    ncf = ngx_http_conf_upstream_srv_conf(us, ngx_http_nacos_upstream_module);
     peers = ngx_http_nacos_create_peers(cf->log);
     if (peers == NULL) {
         return NGX_ERROR;
@@ -248,12 +260,12 @@ static ngx_int_t ngx_http_nacos_init_upstream(ngx_conf_t *cf, ngx_http_upstream_
     sub.key_ptr = &peers->key;
     sub.data_id = ncf->data_id;
     sub.group = ncf->group;
-    if (ngx_nacos_subscribe(cf, &sub) != NGX_OK) {
+    if (ngx_nacos_subscribe_naming(cf, &sub) != NGX_OK) {
         ngx_destroy_pool(pool);
         return NGX_ERROR;
     }
 
-    if (!ngx_nacos_addrs_change(peers->key, peers->version)) {
+    if (!ngx_nacos_shmem_change(peers->key, peers->version)) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "nacos no addrs????");
         ngx_destroy_pool(pool);
         return NGX_ERROR;
@@ -337,7 +349,7 @@ static ngx_http_nacos_peers_t *ngx_http_get_nacos_peers(ngx_http_request_t *r, n
 
     peers = us->peer.data;
 
-    if (!ngx_nacos_addrs_change(peers->key, peers->version)) {
+    if (!ngx_nacos_shmem_change(peers->key, peers->version)) {
         return peers;
     }
 
@@ -369,7 +381,7 @@ static ngx_http_nacos_peers_t *ngx_http_get_nacos_peers(ngx_http_request_t *r, n
         cf.pool = new_peers->pool;
         cf.temp_pool = r->pool;
         cf.log = r->connection->log;
-        nusf = ngx_http_conf_upstream_srv_conf(us, ngx_http_nacos_module);
+        nusf = ngx_http_conf_upstream_srv_conf(us, ngx_http_nacos_upstream_module);
         if (nusf->original_init_upstream(&cf, new_peers->us) != NGX_OK) {
             ngx_destroy_pool(new_peers->pool);
             return NULL;

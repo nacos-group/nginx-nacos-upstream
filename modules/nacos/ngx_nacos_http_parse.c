@@ -3,14 +3,14 @@
 //
 
 #include <ngx_nacos_http_parse.h>
-
 #include <string.h>
 
 static u_char *n_strchr(u_char *s, const u_char *e, int c) {
     /* find first occurrence of c in char s[] */
     const u_char ch = c;
 
-    for (; s < e && *s != ch; ++s);
+    for (; s < e && *s != ch; ++s)
+        ;
 
     return s == e ? NULL : s;
 }
@@ -19,9 +19,9 @@ static u_char *n_strnstr(u_char *s1, u_char *e, const char *s2) {
     /* find first occurrence of s2[] in s1[] */
     const u_char *sc1;
     const char *sc2;
-    if (*s2 == '\0')
-        return s1;
-    for (; (s1 = n_strchr(s1, e, *s2)) != NULL; ++s1) {    /* match rest of prefix */
+    if (*s2 == '\0') return s1;
+    for (; (s1 = n_strchr(s1, e, *s2)) != NULL;
+         ++s1) { /* match rest of prefix */
         for (sc1 = s1, sc2 = s2;;)
             if (*++sc2 == '\0')
                 return s1;
@@ -57,9 +57,8 @@ static u_char *n_hex2int(u_char *s, ngx_int_t *out_n) {
     return NULL;
 }
 
-
 ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
-    u_char * c, *e, *t, *ch;
+    u_char *c, *e, *t, *ch;
     size_t len;
     yajl_status j_status;
 
@@ -67,7 +66,8 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
     e = parse->buf + parse->limit;
 
     if (parse->parse_state == line) {
-        if (parse->limit - parse->offset < 14) {// HTTP/1.1 200 <status_text>\r\n
+        if (parse->limit - parse->offset <
+            14) {  // HTTP/1.1 200 <status_text>\r\n
             goto move_again;
         }
         t = n_strnstr(c, e, "\r\n");
@@ -75,7 +75,8 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
             goto move_again;
         }
         if (ngx_strncmp(c, "HTTP/", 5) != 0) {
-            ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. protocol error in version");
+            ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                          "parse nacos resp. protocol error in version");
             return NGX_ERROR;
         }
         c += 5;
@@ -86,7 +87,8 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
         } else if (ngx_strncmp(c, "0.9", 3) == 0) {
             parse->http_version = v_09;
         } else {
-            ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. protocol error in version");
+            ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                          "parse nacos resp. protocol error in version");
             return NGX_ERROR;
         }
 
@@ -96,11 +98,13 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
         }
         parse->status = ngx_atoi((u_char *) c, 3);
         if (parse->status == NGX_ERROR) {
-            ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. protocol error in status");
+            ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                          "parse nacos resp. protocol error in status");
             return NGX_ERROR;
         }
         if (parse->status < 100 || parse->status > 900) {
-            ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. status invalid:%d", parse->status);
+            ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                          "parse nacos resp. status invalid:%d", parse->status);
             return NGX_ERROR;
         }
         c = t + 2;
@@ -119,13 +123,15 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
             }
             if (parse->body_type == none) {
                 if (parse->close_conn == 1) {
+                    parse->real_body_len = 0;
                     parse->body_type = oef;
                 } else {
-                    ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. unknown body length");
+                    ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                                  "parse nacos resp. unknown body length");
                     return NGX_ERROR;
                 }
             } else if (parse->body_type == chunk) {
-                parse->chunk_size = -2;// init -2; \r\n
+                parse->chunk_size = -2;  // init -2; \r\n
             }
             c += 2;
             parse->offset = c - parse->buf;
@@ -140,30 +146,36 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
             break;
         }
 
-        if (parse->json_body == 0 && ngx_strncasecmp(c, (u_char *) "Content-Type:", 13) == 0) {
+        if (parse->json_body == 0 &&
+            ngx_strncasecmp(c, (u_char *) "Content-Type:", 13) == 0) {
             c += 13;
             while (*c == ' ') {
                 ++c;
             }
-            if (ngx_strncasecmp((u_char *) c, (u_char *) "application/json", 16) == 0) {
+            if (ngx_strncasecmp((u_char *) c, (u_char *) "application/json",
+                                16) == 0) {
                 parse->json_body = 1;
             } else {
                 parse->json_body = -1;
             }
         } else if (parse->body_type == none &&
-                   ngx_strncasecmp((u_char *) c, (u_char *) "Transfer-Encoding:", 18) == 0) {
+                   ngx_strncasecmp((u_char *) c,
+                                   (u_char *) "Transfer-Encoding:", 18) == 0) {
             c += 18;
             while (*c == ' ') {
                 ++c;
             }
             if (ngx_strncasecmp((u_char *) c, (u_char *) "chunked", 7) == 0) {
                 parse->body_type = chunk;
+                parse->real_body_len = 0;
             } else {
-                ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. unknown Transfer-Encoding");
+                ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                              "parse nacos resp. unknown Transfer-Encoding");
                 return NGX_ERROR;
             }
         } else if (parse->body_type == none &&
-                   ngx_strncasecmp((u_char *) c, (u_char *) "Content-Length:", 15) == 0) {
+                   ngx_strncasecmp((u_char *) c,
+                                   (u_char *) "Content-Length:", 15) == 0) {
             c += 15;
             while (*c == ' ') {
                 ++c;
@@ -171,19 +183,23 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
 
             parse->content_len = ngx_atoi((u_char *) c, t - c);
             if (parse->content_len == NGX_ERROR) {
-                ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. unknown Content-Length");
+                ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                              "parse nacos resp. unknown Content-Length");
                 return NGX_ERROR;
             }
+            parse->real_body_len = parse->content_len;
             parse->body_type = cont_len;
-        } else if (parse->close_conn == 0
-                   && ngx_strncasecmp((u_char *) c, (u_char *) "Connection:", 11) == 0) {
+        } else if (parse->close_conn == 0 &&
+                   ngx_strncasecmp((u_char *) c,
+                                   (u_char *) "Connection:", 11) == 0) {
             c += 11;
             while (*c == ' ') {
                 ++c;
             }
             if (ngx_strncasecmp((u_char *) c, (u_char *) "close", 5) == 0) {
                 parse->close_conn = 1;
-            } else if (ngx_strncasecmp((u_char *) c, (u_char *) "keep-alive", 10) == 0) {
+            } else if (ngx_strncasecmp((u_char *) c, (u_char *) "keep-alive",
+                                       10) == 0) {
                 parse->close_conn = -1;
             }
         }
@@ -196,12 +212,14 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
         t = NULL;
         if (parse->body_type == cont_len) {
             t = c;
-            len = ngx_min((ngx_int_t) (parse->limit - parse->offset), parse->content_len);
+            len = ngx_min((ngx_int_t) (parse->limit - parse->offset),
+                          parse->content_len);
             if (len > 0 && parse->json_parser) {
-                j_status = yajl_tree_parse_incrementally(
-                        parse->json_parser, (const char *) t, len);
+                j_status = yajl_tree_parse_incrementally(parse->json_parser,
+                                                         (const char *) t, len);
                 if (j_status != yajl_status_ok) {
-                    ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. invalid json[0]");
+                    ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                                  "parse nacos resp. invalid json[0]");
                     yajl_tree_free_parser(parse->json_parser);
                     parse->json_parser = NULL;
                 }
@@ -217,12 +235,13 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
         } else if (parse->body_type == oef) {
             t = c;
             len = (ngx_int_t) parse->limit - parse->offset;
-
+            parse->real_body_len += len;
             if (len > 0 && parse->json_parser) {
-                j_status = yajl_tree_parse_incrementally(
-                        parse->json_parser, (const char *) t, len);
+                j_status = yajl_tree_parse_incrementally(parse->json_parser,
+                                                         (const char *) t, len);
                 if (j_status != yajl_status_ok) {
-                    ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. invalid json[1]");
+                    ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                                  "parse nacos resp. invalid json[1]");
                     yajl_tree_free_parser(parse->json_parser);
                     parse->json_parser = NULL;
                 }
@@ -233,20 +252,22 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
                 return NGX_OK;
             }
             goto move_again;
-        } else { // chunked
+        } else {  // chunked
             while (parse->parse_state == body) {
                 c = parse->buf + parse->offset;
 
-                if (parse->chunk_size == -2) {// end chunk
+                if (parse->chunk_size == -2) {  // end chunk
                     t = n_strnstr(c, e, "\r\n");
                     if (t == NULL) {
                         goto move_again;
                     }
                     ch = n_hex2int(c, &parse->chunk_size);
                     if (ch != t) {
-                        ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. invalid chunk size");
+                        ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                                      "parse nacos resp. invalid chunk size");
                         return NGX_ERROR;
                     }
+                    parse->real_body_len += parse->chunk_size;
                     c = t + 2;
                     parse->offset = c - parse->buf;
                     if (parse->chunk_size == 0) {
@@ -256,12 +277,14 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
                 }
 
                 if (parse->chunk_size > 0) {
-                    len = ngx_min(parse->chunk_size, (ngx_int_t) (parse->limit - parse->offset));
+                    len = ngx_min(parse->chunk_size,
+                                  (ngx_int_t) (parse->limit - parse->offset));
                     if (len > 0 && parse->json_parser) {
                         j_status = yajl_tree_parse_incrementally(
-                                parse->json_parser, (const char *) c, len);
+                            parse->json_parser, (const char *) c, len);
                         if (j_status != yajl_status_ok) {
-                            ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. invalid json[2]");
+                            ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                                          "parse nacos resp. invalid json[2]");
                             yajl_tree_free_parser(parse->json_parser);
                             parse->json_parser = NULL;
                         }
@@ -278,7 +301,9 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
                 if (parse->chunk_size == 0) {
                     if (parse->limit - parse->offset >= 2) {
                         if (n_strnstr(c, e, "\r\n") != c) {
-                            ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. absent chunk end line");
+                            ngx_log_error(
+                                NGX_LOG_WARN, parse->log, 0,
+                                "parse nacos resp. absent chunk end line");
                             return NGX_ERROR;
                         }
                         c += 2;
@@ -289,11 +314,11 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
                     }
                 } else {
                     // not hit
-                    ngx_log_error(NGX_LOG_WARN, parse->log, 0, "parse nacos resp. chunk bug???");
+                    ngx_log_error(NGX_LOG_WARN, parse->log, 0,
+                                  "parse nacos resp. chunk bug???");
                     return NGX_ERROR;
                 }
             }
-
         }
     }
 
@@ -301,7 +326,7 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
         return NGX_OK;
     }
 
-    move_again:
+move_again:
     if (parse->offset == parse->limit) {
         parse->offset = 0;
         parse->limit = 0;
@@ -316,5 +341,3 @@ ngx_int_t ngx_nacos_http_parse(ngx_nacos_http_parse_t *parse) {
     }
     return NGX_AGAIN;
 }
-
-

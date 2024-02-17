@@ -473,8 +473,8 @@ static ngx_int_t ngx_nacos_subscribe(ngx_conf_t *cf, ngx_nacos_sub_t *sub,
             return NGX_ERROR;
         }
     } else {
-        n = mcf->keys.nelts;
-        kptr = mcf->keys.elts;
+        n = all_keys->nelts;
+        kptr = all_keys->elts;
         for (i = 0; i < n; ++i) {
             if (nacos_key_eq(kptr[i], &tmp)) {
                 *sub->key_ptr = kptr[i];

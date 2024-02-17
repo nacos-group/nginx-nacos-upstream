@@ -15,7 +15,7 @@
 
 #define NACOS_CONFIG_REQ_FMT                    \
     "GET /nacos/v1/cs/configs?&group=%V&"       \
-    "dataId=%V&tenant=%V HTTP/1.0\r\n"          \
+    "dataId=%V&tenant=%V&show=all HTTP/1.0\r\n"          \
     "Host: %V\r\n"                              \
     "User-Agent: Nacos-Java-Client:v2.10.0\r\n" \
     "Connection: close\r\n\r\n"
@@ -366,11 +366,11 @@ ngx_int_t ngx_nacos_fetch_config_net_data(ngx_nacos_main_conf_t *mcf,
     u_char data[512];
 
     req_buf.data = data;
-    req_buf.len = ngx_snprintf(req_buf.data, NACOS_SUB_RESP_BUF_SIZE - 1,
-                               NACOS_CONFIG_REQ_FMT, &cache->group,
-                               &cache->data_id,
-                               &mcf->tenant_namespace, &mcf->server_host) -
-                  req_buf.data;
+    req_buf.len =
+        ngx_snprintf(req_buf.data, NACOS_SUB_RESP_BUF_SIZE - 1,
+                     NACOS_CONFIG_REQ_FMT, &cache->group, &cache->data_id,
+                     &mcf->tenant_namespace, &mcf->server_host) -
+        req_buf.data;
 
     if (req_buf.len >= NACOS_SUB_RESP_BUF_SIZE - 1) {
         ngx_log_error(NGX_LOG_EMERG, cache->pool->log, 0,
@@ -378,6 +378,7 @@ ngx_int_t ngx_nacos_fetch_config_net_data(ngx_nacos_main_conf_t *mcf,
                       &cache->group, &cache->data_id);
         return NGX_ERROR;
     }
+    req_buf.data[req_buf.len] = 0;
     return ngx_nacos_fetch_net_data(mcf, cache, &req_buf,
                                     ngx_nacos_parse_config_from_json);
 }

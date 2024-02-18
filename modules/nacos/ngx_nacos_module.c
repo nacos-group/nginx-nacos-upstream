@@ -53,10 +53,14 @@ static ngx_command_t cmds[] = {
      NGX_NACOS_MAIN_CONF | NGX_DIRECT_CONF | NGX_CONF_TAKE1,
      ngx_conf_set_str_slot, 0, offsetof(ngx_nacos_main_conf_t, default_group),
      NULL},
-    {ngx_string("tenant_namespace"),
+    {ngx_string("config_tenant"),
+     NGX_NACOS_MAIN_CONF | NGX_DIRECT_CONF | NGX_CONF_TAKE1,
+     ngx_conf_set_str_slot, 0, offsetof(ngx_nacos_main_conf_t, config_tenant),
+     NULL},
+    {ngx_string("service_namespace"),
      NGX_NACOS_MAIN_CONF | NGX_DIRECT_CONF | NGX_CONF_TAKE1,
      ngx_conf_set_str_slot, 0,
-     offsetof(ngx_nacos_main_conf_t, tenant_namespace), NULL},
+     offsetof(ngx_nacos_main_conf_t, service_namespace), NULL},
     {ngx_string("server_host"),
      NGX_NACOS_MAIN_CONF | NGX_DIRECT_CONF | NGX_CONF_TAKE1,
      ngx_conf_set_str_slot, 0, offsetof(ngx_nacos_main_conf_t, server_host),
@@ -340,8 +344,8 @@ static char *ngx_nacos_conf_block(ngx_conf_t *cf, ngx_command_t *cmd,
         ngx_str_set(&ncf->server_host, "nacos");
     }
 
-    if (!ncf->tenant_namespace.data) {
-        ngx_str_set(&ncf->tenant_namespace, "public");
+    if (!ncf->service_namespace.data) {
+        ngx_str_set(&ncf->service_namespace, "public");
     }
 
     if (!ncf->error_log) {

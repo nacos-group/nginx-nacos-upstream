@@ -43,7 +43,8 @@ typedef struct {
     ngx_str_t udp_ip;
     ngx_str_t udp_bind;
     ngx_str_t server_host;
-    ngx_str_t tenant_namespace;
+    ngx_str_t config_tenant;
+    ngx_str_t service_namespace;
     ngx_uint_t keys_hash_max_size;
     ngx_uint_t keys_bucket_size;
     ngx_uint_t config_keys_hash_max_size;

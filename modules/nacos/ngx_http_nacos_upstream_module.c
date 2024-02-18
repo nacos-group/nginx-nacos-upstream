@@ -74,7 +74,7 @@ static ngx_http_module_t ngx_http_nacos_module_ctx = {
 
 static ngx_command_t cmds[] = {
         {
-                ngx_string("use_nacos_address"),
+                ngx_string("nacos_subscribe_service"),
                 NGX_HTTP_UPS_CONF | NGX_CONF_TAKE12,
                 ngx_http_conf_use_nacos_address,
                 NGX_HTTP_SRV_CONF_OFFSET,
@@ -121,9 +121,9 @@ static char *ngx_http_conf_use_nacos_address(ngx_conf_t *cf, ngx_command_t *cmd,
     ngx_memzero(&tmp, sizeof(tmp));
 
     for (i = 1; i < n; ++i) {
-        if (value[i].len > 8 && ngx_strncmp(value[i].data, "data_id=", 8) == 0) {
-            tmp.data_id.data = value[i].data + 8;
-            tmp.data_id.len = value[i].len - 8;
+        if (value[i].len > 8 && ngx_strncmp(value[i].data, "service_name=", 13) == 0) {
+            tmp.data_id.data = value[i].data + 13;
+            tmp.data_id.len = value[i].len - 13;
             continue;
         }
         if (value[i].len > 6 && ngx_strncmp(value[i].data, "group=", 6) == 0) {

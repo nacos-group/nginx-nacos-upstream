@@ -30,14 +30,14 @@ http {
         # server 127.0.0.1:8080;
         # 如果provider使用的spring，data_id 要和 spring.application.name一致
         # 不知道 provider 端怎么写请参考 https://github.com/zhwaaaaaa/springmvc-nacos-registry
-        use_nacos_address data_id=springmvc-nacos-demo;
+        nacos_subscribe_service service_name=springmvc-nacos-demo;
     }
     
-    # 订阅 nacos 的配置。 。
+    # 订阅 nacos 的配置。$n_var = "content"  $dd = "md5"
     nacos_config_var $n_var data_id=aaabbbbccc group=DEFAULT_GROUP md5_var=$dd default=123456;
     
     server {
-        # ... other config
+        # ... other config s
         location ^~ / {
             # 把 从 nacos 拿到的配置加入 header
             add_header X-Var-Nacos "$n_var" always;

@@ -347,7 +347,7 @@ ngx_int_t ngx_nacos_fetch_addrs_net_data(ngx_nacos_main_conf_t *mcf,
     req_buf.len = ngx_snprintf(req_buf.data, NACOS_SUB_RESP_BUF_SIZE - 1,
                                NACOS_ADDR_REQ_FMT, &cache->group,
                                &cache->data_id, &mcf->udp_port, &mcf->udp_ip,
-                               &mcf->tenant_namespace, &mcf->server_host) -
+                               &mcf->service_namespace, &mcf->server_host) -
                   req_buf.data;
 
     if (req_buf.len >= NACOS_SUB_RESP_BUF_SIZE - 1) {
@@ -369,7 +369,7 @@ ngx_int_t ngx_nacos_fetch_config_net_data(ngx_nacos_main_conf_t *mcf,
     req_buf.len =
         ngx_snprintf(req_buf.data, NACOS_SUB_RESP_BUF_SIZE - 1,
                      NACOS_CONFIG_REQ_FMT, &cache->group, &cache->data_id,
-                     &mcf->tenant_namespace, &mcf->server_host) -
+                     &mcf->config_tenant, &mcf->server_host) -
         req_buf.data;
 
     if (req_buf.len >= NACOS_SUB_RESP_BUF_SIZE - 1) {

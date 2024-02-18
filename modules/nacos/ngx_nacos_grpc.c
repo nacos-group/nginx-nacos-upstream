@@ -1974,7 +1974,7 @@ static ngx_int_t ngx_nacos_grpc_do_subscribe_service_items(
     }
 
     b_len = ngx_snprintf(tmp, sizeof(tmp), SUBSCRIBE_JSON_FMT,
-                         &ncf->tenant_namespace, &key[idx]->data_id,
+                         &ncf->service_namespace, &key[idx]->data_id,
                          &key[idx]->group) -
             (u_char *) tmp;
 
@@ -2093,8 +2093,8 @@ static ngx_int_t ngx_nacos_grpc_do_subscribe_config_items(
 
             yajl_gen_string(gen, (u_char *) "tenant", sizeof("tenant") - 1) !=
                 yajl_gen_status_ok ||  // "tenant": tenant
-            yajl_gen_string(gen, ncf->tenant_namespace.data,
-                            ncf->tenant_namespace.len) != yajl_gen_status_ok ||
+            yajl_gen_string(gen, ncf->config_tenant.data,
+                            ncf->config_tenant.len) != yajl_gen_status_ok ||
 
             yajl_gen_map_close(gen) != yajl_gen_status_ok) {
             goto err;
@@ -2320,11 +2320,8 @@ static ngx_int_t ngx_nacos_grpc_service_sub_event_resp_handler(
 
 static ngx_int_t ngx_nacos_grpc_config_change_deal(ngx_nacos_grpc_stream_t *st,
                                                    yajl_val root) {
-    yajl_val *it, *et, s_data_id, s_group, changedConfigs;
-    ngx_nacos_key_t *key;
+    yajl_val *it, *et, changedConfigs;
     ngx_int_t rc;
-    u_char tmp[256];
-    size_t len;
 
     rc = NGX_ERROR;
 
@@ -2346,37 +2343,14 @@ static ngx_int_t ngx_nacos_grpc_config_change_deal(ngx_nacos_grpc_stream_t *st,
                           "changedConfigs is not object");
             continue;
         }
-        s_data_id = yajl_tree_get_field(*it, "dataId", yajl_t_string);
-        s_group = yajl_tree_get_field(*it, "group", yajl_t_string);
-        if (s_data_id == NULL || s_group == NULL) {
-            ngx_log_error(NGX_LOG_WARN, st->conn->conn->log, 0,
-                          "nacos ConfigChangeBatchListenResponse "
-                          "changedConfigs not contains group/dataId");
-            continue;
-        }
-        len =
-            ngx_snprintf(tmp, sizeof(tmp) - 1, "%s@@%s",
-                         YAJL_GET_STRING(s_group), YAJL_GET_STRING(s_data_id)) -
-            tmp;
-        tmp[len] = 0;
-
-        key = ngx_nacos_hash_find_key(grpc_ctx.ncf->config_key_hash, tmp);
-        if (key == NULL) {
-            ngx_log_error(NGX_LOG_WARN, st->conn->conn->log, 0,
-                          "nacos ConfigChangeBatchListenResponse "
-                          "changedConfigs group/dataId[%s] not exists",
-                          tmp);
-            continue;
-        }
-
-        rc = ngx_nacos_grpc_send_config_query_request(st->conn, key);
+        rc = ngx_nacos_grpc_config_change_notified(st->conn, *it);
         if (rc == NGX_ERROR) {
             ngx_log_error(NGX_LOG_WARN, st->conn->conn->log, 0,
                           "nacos ConfigChangeBatchListenResponse "
                           "send_config_query failed");
             break;
         }
-        ngx_log_error(NGX_LOG_WARN, st->conn->conn->log, 0,
+        ngx_log_error(NGX_LOG_INFO, st->conn->conn->log, 0,
                       "nacos ConfigChangeBatchListenResponse "
                       "send_config_query [%d]",
                       rc);
@@ -2664,7 +2638,7 @@ static ngx_int_t ngx_nacos_grpc_config_change_notified(
     yajl_val s_name, g_name, t_name;
     ngx_nacos_key_t *key;
     ngx_int_t rc;
-    u_char tmp[256];
+    u_char tmp[512];
     size_t len;
 
     rc = NGX_ERROR;
@@ -2682,10 +2656,10 @@ static ngx_int_t ngx_nacos_grpc_config_change_notified(
     }
     t_name = yajl_tree_get_field(root, "tenant", yajl_t_string);
 
-    if (grpc_ctx.ncf->tenant_namespace.len > 0 &&
+    if (grpc_ctx.ncf->config_tenant.len > 0 &&
         (ngx_strlen(YAJL_GET_STRING(t_name)) !=
-             grpc_ctx.ncf->tenant_namespace.len ||
-         ngx_strcmp(grpc_ctx.ncf->tenant_namespace.data,
+             grpc_ctx.ncf->config_tenant.len ||
+         ngx_strcmp(grpc_ctx.ncf->config_tenant.data,
                     YAJL_GET_STRING(t_name)) != 0)) {
         ngx_log_error(NGX_LOG_WARN, gc->conn->log, 0,
                       "nacos server sent config change with unknown tenant:%s",
@@ -2745,7 +2719,7 @@ static ngx_int_t ngx_nacos_grpc_send_config_query_request(
     }
 
     b_len = ngx_snprintf(tmp, sizeof(tmp), CONFIG_QUERY_JSON, &key->data_id,
-                         &key->group, &ncf->tenant_namespace) -
+                         &key->group, &ncf->config_tenant) -
             (u_char *) tmp;
 
     en.type = "ConfigQueryRequest";

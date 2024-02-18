@@ -58,11 +58,15 @@ http {
 本项目包含 nginx 1.20 的代码。由于使用了 grpc 连接 nacos，所以需要安装 protobuf 和 protobuf-c 库。
 ubuntu 下安装方式为
 
-```sudo apt install libprotobuf-dev libprotobuf-c-dev```
+```bash
+ sudo apt install libprotobuf-dev libprotobuf-c-dev
+ ```
 
 grpc 使用的是 http2 传输，所以 nacos 模块需要和 http2 模块一起安装（ps: 可能还需提前安装 libopenssl，除非使用不加密的 http2）：
 
-```./configure --add-module=modules/auxiliary --add-module=modules/nacos --with-http_ssl_module --with-http_v2_module && make```
+```bash
+./configure --add-module=modules/auxiliary --add-module=modules/nacos --with-http_ssl_module --with-http_v2_module && make
+```
 
 ### 原理
  - 新增加一个 auxiliary 模块, 启动一个单独辅助进程，用于订阅和接受 nacos 的 grpc 或者 udp 消息推送，不影响 worker 进程的工作。

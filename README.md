@@ -114,6 +114,17 @@ nacos 使用的是默认的 group。订阅的时候 可能只是制定了 data_i
 ```
 default_group DEFAULT_GROUP;
 ```
+#### config_tenant
+nacos config 功能所使用的 tenant.默认 空 ;
+```
+config_tenant "";
+```
+#### service_namespace
+nacos 服务功能所使用的 namespace.默认 "public" ;
+```
+service_namespace "public";
+```
+
 #### cache_dir
 nacos 的文件 缓存目录，下次启动 会优先从 这个目录读取数据，加快启动时间，否则从 http 地址拉取。"/"结尾
 ```
@@ -182,6 +193,7 @@ nacos_config_var $var_name md5_var=$md5_var_name data_id=xxxx group=xxx default=
 ```
 通过 $var_name 获取到 配置的内容。$md5_var_name 可以获取到配置的 md5。
 如果nacos中指定的 data_id 和 group 不存在，使用 默认值 def_value
+nacos 变量功能让 nginx 的灵活性大大增强了。
 
 # 开发计划
  * 通过 UDP 协议订阅 nacos 服务。（✅）

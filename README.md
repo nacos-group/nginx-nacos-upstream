@@ -75,7 +75,7 @@ grpc 使用的是 http2 传输，所以 nacos 模块需要和 http2 模块一起
 
 # 详细配置
 ### nacos block
-nacos {} 必需放在 http {} 的前面。
+nacos {} 必需放在 http {} 的前面。下面的 小标题 配置 指令都放在 nacos {} 中
 
 #### server_list
 配置 nacos 的 http 地址，这个地址必需要配置。
@@ -109,18 +109,18 @@ nacos 日志文件 和 级别.
 ```
 error_log logs/nacos.log info;
 ```
-#### default_group
+#### default_group (默认 DEFAULT_GROUP)
 nacos 使用的是默认的 group。订阅的时候 可能只是制定了 data_id 或 service_name,没有指定 group= 则使用这个值
 ```
 default_group DEFAULT_GROUP;
 ```
-#### config_tenant
-nacos config 功能所使用的 tenant.默认 空 ;
+#### config_tenant （默认 空）
+nacos config 功能所使用的 tenant. ;
 ```
 config_tenant "";
 ```
-#### service_namespace
-nacos 服务功能所使用的 namespace.默认 "public" ;
+#### service_namespace （默认 "public"）
+nacos 服务功能所使用的 namespace.;
 ```
 service_namespace "public";
 ```
@@ -131,11 +131,7 @@ nacos 的文件 缓存目录，下次启动 会优先从 这个目录读取数�
 cache_dir nacos_cache/;
 ```
 
-#### server_host （可省略，有默认值）
-nacos http 请求所使用的 host
-```
-server_host nacos;
-```
+
 #### server_host （可省略，默认值：nacos）
 nacos http 请求所使用的 host
 ```
@@ -173,7 +169,7 @@ udp_pool_size 8192;
 ```
 
 ### nacos_subscribe_service
-在 upstream 中，不需要配置 后端 ip 和 端口。
+订阅 nacos 服务，这是 本项目核心指令。在 upstream 中，不需要配置 后端 ip 和 端口。
 通过 nacos_subscribe_service 指定服务名，nginx 会订阅 nacos 中的服务，自动填充。
 服务发布下线 也会 自动更新。
 ```

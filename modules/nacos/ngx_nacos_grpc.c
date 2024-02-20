@@ -1256,6 +1256,8 @@ parse_header:
     last = tb->last;
     state = 0;
     huffmanEncoded = 0;
+    field_len = 0;
+    index = 0;
     ngx_str_null(&key);
     ngx_str_null(&value);
     for (; p < last;) {
@@ -1334,7 +1336,7 @@ parse_header:
                 huffmanEncoded = (ch & 0x80) == 0x80;
                 index = ch & 0x7F;
                 if (index == 0x7f) {
-                    state = s_literal_header_value_length;
+                    state = s_literal_header_name_length;
                 } else {
                     field_len = index;
                     state = s_literal_header_name;

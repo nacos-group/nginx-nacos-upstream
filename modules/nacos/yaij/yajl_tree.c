@@ -461,6 +461,7 @@ yajl_val yajl_tree_get_field(yajl_val parent, const char *path, yajl_type type) 
 
     if (parent->type != yajl_t_object) return NULL;
 
+    n = NULL;
     len = parent->u.object.len;
     for (i = 0; i < len; i++) {
         if (!strcmp(path, parent->u.object.keys[i])) {

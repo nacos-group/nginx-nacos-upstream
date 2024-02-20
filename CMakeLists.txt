@@ -3,8 +3,8 @@ project(nginx_nacos C)
 
 set(CMAKE_C_STANDARD 90)
 
-set(CMAKE_C_FLAGS "-W -Wall -Wpointer-arith -Wno-unused-parameter -Werror=uninitialized -Werror -Wreturn-type -Wno-deprecated-declarations")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -W -Wall -Wno-unused-parameter -Werror=uninitialized")
+set(CMAKE_C_FLAGS "-W -Wall -Wpointer-arith -Wno-unused-parameter -Werror=uninitialized -Werror -Wreturn-type -Wno-deprecated-declarations -Wconditional-uninitialized")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -W -Wall -Wno-unused-parameter -Werror=uninitialized -Wconditional-uninitialized")
 
 set(NGX_C_FILES src/core/nginx.c
         src/core/ngx_log.c

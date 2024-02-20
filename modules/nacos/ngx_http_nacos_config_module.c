@@ -75,8 +75,7 @@ static ngx_http_module_t module_ctx = {
 static ngx_command_t cmds[] = {
     {ngx_string("nacos_config_var"),
      NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_SIF_CONF |
-         NGX_HTTP_LOC_CONF | NGX_HTTP_LIF_CONF | NGX_CONF_2MORE |
-         NGX_CONF_TAKE4,
+         NGX_HTTP_LOC_CONF | NGX_HTTP_LIF_CONF | NGX_CONF_2MORE,
      ngx_http_nacos_config_var, NGX_HTTP_LOC_CONF_OFFSET, 0, NULL},
     ngx_null_command};
 

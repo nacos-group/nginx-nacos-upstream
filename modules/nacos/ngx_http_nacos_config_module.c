@@ -264,6 +264,10 @@ static ngx_int_t ngx_http_nacos_get_variable(ngx_http_request_t *r,
     nlcf = ngx_http_get_module_loc_conf(r, ngx_http_nacos_config_module);
 
     item = nlcf->cf_items + (ngx_int_t) data;
+    if (item->cft == NULL) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
 
     if (ngx_http_nacos_fetch_config(item->cft) != NGX_OK) {
         return NGX_ERROR;
@@ -309,6 +313,10 @@ static ngx_int_t ngx_http_nacos_md5_get_variable(ngx_http_request_t *r,
     nlcf = ngx_http_get_module_loc_conf(r, ngx_http_nacos_config_module);
 
     cft = nlcf->md5_items[(ngx_int_t) data];
+    if (cft == NULL) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
 
     if (ngx_http_nacos_fetch_config(cft) != NGX_OK) {
         return NGX_ERROR;

@@ -11,44 +11,60 @@ static void ngx_pass_open_channel(ngx_cycle_t *cycle);
 static ngx_int_t ngx_aux_init_master(ngx_cycle_t *cycle);
 
 static ngx_core_module_t auxiliary_module = {
-        ngx_string("auxiliary"),
-        NULL, // 解析配置文件之前执行
-        NULL // 解析配置文件之后执行
+    ngx_string("auxiliary"),
+    NULL,  // 解析配置文件之前执行
+    NULL   // 解析配置文件之后执行
 };
 
-ngx_module_t ngx_auxiliary_module = {
-        NGX_MODULE_V1,
-        &auxiliary_module,
-        NULL,
-        NGX_CORE_MODULE,
-        NULL,                                 /* init master */
-        NULL,                                  /* init module */
-        ngx_aux_init_master,                   /* init process */
-        NULL,                                  /* init thread */
-        NULL,                                  /* exit thread */
-        NULL,                                  /* exit process */
-        NULL,                                  /* exit master */
-        NGX_MODULE_V1_PADDING
-};
+ngx_module_t ngx_auxiliary_module = {NGX_MODULE_V1,
+                                     &auxiliary_module,
+                                     NULL,
+                                     NGX_CORE_MODULE,
+                                     NULL,                /* init master */
+                                     NULL,                /* init module */
+                                     ngx_aux_init_master, /* init process */
+                                     NULL,                /* init thread */
+                                     NULL,                /* exit thread */
+                                     NULL,                /* exit process */
+                                     NULL,                /* exit master */
+                                     NGX_MODULE_V1_PADDING};
 
-#define ngx_aux_get_main_conf_ptr(cf)  (ngx_aux_proc_main_conf_t **) &(cf)->cycle->conf_ctx[ngx_auxiliary_module.index]
-
+#define ngx_aux_get_main_conf_ptr(cf)   \
+    (ngx_aux_proc_main_conf_t **) &(cf) \
+        ->cycle->conf_ctx[ngx_auxiliary_module.index]
 
 ngx_int_t ngx_aux_add_proc(ngx_conf_t *cf, ngx_aux_proc_t *proc) {
     ngx_aux_proc_main_conf_t **ptr, *mcf;
+    ngx_aux_proc_t **n_proc;
+    ngx_uint_t i;
+
     ptr = ngx_aux_get_main_conf_ptr(cf);
-    if (*ptr == NULL) {
-        *ptr = ngx_palloc(cf->pool, sizeof(ngx_aux_proc_main_conf_t));
-    }
+
     mcf = *ptr;
     if (mcf == NULL) {
-        return NGX_ERROR;
-    }
-    if (ngx_array_init(&mcf->process, cf->pool, 4, sizeof(ngx_aux_proc_t *)) != NGX_OK) {
-        return NGX_ERROR;
+        mcf = ngx_palloc(cf->pool, sizeof(ngx_aux_proc_main_conf_t));
+        if (mcf == NULL) {
+            return NGX_ERROR;
+        }
+        if (ngx_array_init(&mcf->process, cf->pool, 4,
+                           sizeof(ngx_aux_proc_t *)) != NGX_OK) {
+            return NGX_ERROR;
+        }
+        *ptr = mcf;
+    } else {
+        n_proc = mcf->process.elts;
+        for (i = 0; i < mcf->process.nelts; i++) {
+            if (n_proc[i]->name.len == proc->name.len &&
+                ngx_strncmp(n_proc[i]->name.data, proc->name.data,
+                            proc->name.len) == 0) {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                                   "process \"%V\" exists", &proc->name);
+                return NGX_ERROR;
+            }
+        }
     }
 
-    ngx_aux_proc_t **n_proc = ngx_array_push(&mcf->process);
+    n_proc = ngx_array_push(&mcf->process);
     if (n_proc == NULL) {
         return NGX_ERROR;
     }
@@ -60,9 +76,11 @@ void ngx_aux_start_auxiliary_processes(ngx_cycle_t *cycle, ngx_uint_t respawn) {
     ngx_aux_proc_main_conf_t *mcf;
     ngx_aux_proc_t **proc;
     ngx_uint_t i, n;
+    size_t len;
     char buf[256];
 
-    mcf = (ngx_aux_proc_main_conf_t *) ngx_get_conf(cycle->conf_ctx, ngx_auxiliary_module);
+    mcf = (ngx_aux_proc_main_conf_t *) ngx_get_conf(cycle->conf_ctx,
+                                                    ngx_auxiliary_module);
     if (mcf == NULL) {
         return;
     }
@@ -71,15 +89,18 @@ void ngx_aux_start_auxiliary_processes(ngx_cycle_t *cycle, ngx_uint_t respawn) {
     proc = mcf->process.elts;
 
     for (i = 0; i < n; ++i) {
-        ngx_sprintf((u_char *) buf, "auxiliary: %V", &proc[i]->name);
+        len = ngx_sprintf((u_char *) buf, "auxiliary: %V", &proc[i]->name) -
+              (u_char *) buf;
+        buf[len] = 0;
+        ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
+                      "start auxiliary processes %s", buf);
 
-        ngx_spawn_process(cycle, ngx_aux_process_cycle, proc[i], buf,
-                          respawn ? NGX_PROCESS_JUST_RESPAWN : NGX_PROCESS_RESPAWN);
+        ngx_spawn_process(
+            cycle, ngx_aux_process_cycle, proc[i], buf,
+            respawn ? NGX_PROCESS_JUST_RESPAWN : NGX_PROCESS_RESPAWN);
         ngx_pass_open_channel(cycle);
     }
-
 }
-
 
 static void ngx_pass_open_channel(ngx_cycle_t *cycle) {
     ngx_int_t i;
@@ -91,28 +112,25 @@ static void ngx_pass_open_channel(ngx_cycle_t *cycle) {
     ch.fd = ngx_processes[ngx_process_slot].channel[0];
 
     for (i = 0; i < ngx_last_process; i++) {
-
-        if (i == ngx_process_slot
-            || ngx_processes[i].pid == -1
-            || ngx_processes[i].channel[0] == -1) {
+        if (i == ngx_process_slot || ngx_processes[i].pid == -1 ||
+            ngx_processes[i].channel[0] == -1) {
             continue;
         }
 
         ngx_log_debug6(NGX_LOG_DEBUG_CORE, cycle->log, 0,
                        "pass channel s:%i pid:%P fd:%d to s:%i pid:%P fd:%d",
-                       ch.slot, ch.pid, ch.fd,
-                       i, ngx_processes[i].pid,
+                       ch.slot, ch.pid, ch.fd, i, ngx_processes[i].pid,
                        ngx_processes[i].channel[0]);
 
-
-        ngx_write_channel(ngx_processes[i].channel[0],
-                          &ch, sizeof(ngx_channel_t), cycle->log);
+        ngx_write_channel(ngx_processes[i].channel[0], &ch,
+                          sizeof(ngx_channel_t), cycle->log);
     }
 }
 
 static void ngx_aux_process_cycle(ngx_cycle_t *cycle, void *data) {
     char buf[256];
     ngx_int_t ret;
+    size_t len;
     ngx_aux_proc_t *proc = data;
     ngx_process = NGX_PROCESS_HELPER;
 
@@ -123,15 +141,19 @@ static void ngx_aux_process_cycle(ngx_cycle_t *cycle, void *data) {
     cycle->connection_n = 512;
     ngx_worker_aux_process_init(cycle);
 
-    ngx_sprintf((u_char *) buf, "auxiliary %V", &proc->name);
+    len = ngx_sprintf((u_char *) buf, "auxiliary %V", &proc->name) -
+          (u_char *) buf;
+    buf[len] = 0;
     ngx_setproctitle(buf);
+
     ret = proc->process(cycle, proc);
     if (ret != NGX_OK) {
-        ngx_log_error(NGX_LOG_NOTICE, cycle->log, ret, "exiting auxiliary process: %s", buf);
+        ngx_log_error(NGX_LOG_NOTICE, cycle->log, ret,
+                      "exiting auxiliary process: %s", buf);
         exit(1);
     }
-    for (;;) {
 
+    for (;;) {
         if (ngx_terminate || ngx_quit) {
             ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0, "exiting");
             exit(0);
@@ -145,7 +167,6 @@ static void ngx_aux_process_cycle(ngx_cycle_t *cycle, void *data) {
 
         ngx_process_events_and_timers(cycle);
     }
-
 }
 
 static ngx_int_t ngx_aux_init_master(ngx_cycle_t *cycle) {
@@ -157,7 +178,8 @@ static ngx_int_t ngx_aux_init_master(ngx_cycle_t *cycle) {
         return NGX_OK;
     }
 
-    mcf = (ngx_aux_proc_main_conf_t *) ngx_get_conf(cycle->conf_ctx, ngx_auxiliary_module);
+    mcf = (ngx_aux_proc_main_conf_t *) ngx_get_conf(cycle->conf_ctx,
+                                                    ngx_auxiliary_module);
     if (mcf == NULL) {
         return NGX_ERROR;
     }

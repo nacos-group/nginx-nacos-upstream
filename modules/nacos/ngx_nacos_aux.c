@@ -6,9 +6,7 @@
 #include <ngx_event_connect.h>
 #include <ngx_nacos.h>
 #include <ngx_nacos_aux.h>
-#include <ngx_nacos_data.h>
 #include <ngx_nacos_grpc.h>
-#include <ngx_nacos_http_parse.h>
 #include <ngx_nacos_udp.h>
 
 static ngx_int_t ngx_aux_nacos_proc_handler(ngx_cycle_t *cycle,
@@ -27,10 +25,6 @@ static ngx_aux_proc_t aux_proc = {ngx_string("nacos"), NULL,
                                   ngx_aux_nacos_proc_handler};
 
 ngx_int_t ngx_nacos_aux_init(ngx_conf_t *cf) {
-    if (aux_proc.data != NULL) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "ngx_nacos_aux_init inited");
-        return NGX_ERROR;
-    }
     aux_ctx.ncf = ngx_nacos_get_main_conf(cf);
     aux_proc.data = &aux_ctx;
     return ngx_aux_add_proc(cf, &aux_proc);

@@ -205,11 +205,11 @@ nacos 变量功能让 nginx 的灵活性大大增强了。
  * 通过 UDP 协议订阅 nacos 服务。（✅）
  * 通过 GRPC 协议订阅 nacos 服务。（✅）
  * nginx 通过 GRPC 协议订阅 nacos 配置。（✅）
- * 发布 1.0 版本，可以基本使用。
- * 删除 nginx 原有代码，对 nginx 原有代码的修改通过 patch 支持各个 nginx 版本。
+ * 发布 1.0 版本，可以基本使用。（✅）
+ * 删除 nginx 原有代码，对 nginx 原有代码的修改通过 patch 支持各个 nginx 版本。（✅）
  * 支持集成 openresty 
 
-License
+# License
 - Licensed under the Apache License, Version 2.0 Copyright (c) 2023-2024, Zhwaaaaaa
 - module/nacos/yaij Licensed under the ISC License, Copyright (c) 2007-2014, Lloyd Hilaiel
 

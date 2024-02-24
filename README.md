@@ -55,7 +55,16 @@ http {
 ```
 
 ### 编译
-本项目包含 nginx 1.20 的代码。由于使用了 grpc 连接 nacos，所以除了需要安装 nginx 本身的依赖以，外还需要安装 protobuf 和 protobuf-c 库。
+- 本项目支持 nginx 1.10 及以上版本，所以需要提前下载相应版本的 [nginx](https://nginx.org/download)。例如1.15.2
+```bash
+wget https://nginx.org/download/nginx-1.15.2.tar.gz
+tar zxvf tar zxvf nginx-1.15.2.tar.gz
+```
+- 下载本项目源代码 nginx-nacos-upstream .本项目对 nginx 源代码有少量修改，所以需要 打上 patch
+```bash
+cd nginx-1.15.2 && patch -p1 < ../nginx-nacos-upstream/patch/nginx.patch
+```
+- 由于使用了 grpc 连接 nacos，所以除了需要安装 nginx 本身的依赖以，外还需要安装 protobuf 和 protobuf-c 库。
 ubuntu 下安装方式为
 
 ```bash
@@ -66,6 +75,7 @@ ubuntu 下安装方式为
 grpc 使用的是 http2 传输，所以 nacos 模块需要和 http2 模块一起安装：
 
 ```bash
+cp -r ../nginx-nacos-upstream/modules modules
 ./configure --add-module=modules/auxiliary --add-module=modules/nacos --with-http_ssl_module --with-http_v2_module && make
 ```
 
@@ -198,6 +208,10 @@ nacos 变量功能让 nginx 的灵活性大大增强了。
  * 发布 1.0 版本，可以基本使用。
  * 删除 nginx 原有代码，对 nginx 原有代码的修改通过 patch 支持各个 nginx 版本。
  * 支持集成 openresty 
+
+License
+- Licensed under the Apache License, Version 2.0 Copyright (c) 2023-2024, Zhwaaaaaa
+- module/nacos/yaij Licensed under the ISC License, Copyright (c) 2007-2014, Lloyd Hilaiel
 
 # 致谢
 感谢 [JetBrains](https://www.jetbrains.com.cn) 公司赠送激活码，作者使用 [JetBrains Clion](https://www.jetbrains.com.cn/clion) 开发本项目过程中大大提升了开发效率。

@@ -121,7 +121,7 @@ ngx_nacos_udp_conn_t *ngx_nacos_open_udp(ngx_nacos_main_conf_t *ncf) {
 
     c->log_error = NGX_ERROR_INFO;
     c->number = ngx_atomic_fetch_add(ngx_connection_counter, 1);
-    c->start_time = ngx_current_msec;
+    // c->start_time = ngx_current_msec;
     c->log = ncf->error_log;
 
     rev = c->read;

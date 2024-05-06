@@ -1,6 +1,14 @@
 #!/bin/bash
-
 set -e
+
+wget https://nginx.org/download/nginx-1.22.2.tar.gz
+
+tar zxvf nginx-1.22.2.tar.gz
+cd nginx-1.22.2
+cp -rf ../modules modules
+cp -f ../CMakeLists.txt .
+patch -p1 < ../patch/nginx.patch
+
 
 ./configure \
   --with-http_v2_module \

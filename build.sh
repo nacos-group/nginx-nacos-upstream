@@ -1,20 +1,22 @@
 #!/bin/bash
 set -e
 
-wget https://nginx.org/download/nginx-1.22.2.tar.gz
+rm -rf nginx
+rm -rf cmake-build-debug
 
-tar zxvf nginx-1.22.2.tar.gz
-cd nginx-1.22.2
-cp -rf ../modules modules
-cp -f ../CMakeLists.txt .
+curl -sSL https://nginx.org/download/nginx-1.20.2.tar.gz -o nginx.tar.gz
+
+tar zxvf nginx.tar.gz
+mv nginx-1.20.2 nginx
+cd nginx
 patch -p1 < ../patch/nginx.patch
 
 
 ./configure \
   --with-http_v2_module \
   --with-http_ssl_module \
-  --add-module=modules/auxiliary \
-  --add-module=modules/nacos \
+  --add-module=../modules/auxiliary \
+  --add-module=../modules/nacos \
   --prefix=.. \
   --conf-path=conf/my.conf \
   --error-log-path=cmake-build-debug/logs/error.log \
@@ -27,6 +29,7 @@ patch -p1 < ../patch/nginx.patch
   --http-uwsgi-temp-path=cmake-build-debug/uwsgi_temp \
   --http-scgi-temp-path=cmake-build-debug/scgi_temp
 
-cp -f objs/ngx_auto_config.h cobjs
-cp -f objs/ngx_auto_headers.h cobjs
-cp -f objs/ngx_modules.c cobjs
+cd ..
+
+mkdir -p cmake-build-debug
+rm -f nginx.tar.gz

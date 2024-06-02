@@ -1,0 +1,33 @@
+{
+	"version": "2.0.0",
+	"options": {
+		"cwd": "${workspaceFolder}/cmake-build-debug"
+	},
+	"tasks": [
+		{
+			"type": "shell",
+			"label": "cmake",
+			"command": "cmake",
+			"args": [
+				".."
+			]
+		},
+		{
+			"label": "make",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"command": "make",
+			"args": ["nginx_nacos"]
+		},
+		{
+			"label": "cmake build",
+			"dependsOn": [
+				"mkdir",
+				"cmake",
+				"make"
+			]
+		}
+	]
+}

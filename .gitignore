@@ -2,3 +2,6 @@
 /cmake-build-debug
 /Makefile
 /objs
+/build
+/nginx*
+/CMakeCache.txt

@@ -60,7 +60,7 @@ struct ngx_aux_nacos_conn_s {
     "GET /nacos/v1/ns/instance/list?serviceName=%V%%40%%40%V" \
     "&udpPort=%V&clientIP=%V HTTP/1.1\r\n"                    \
     "Host: %V\r\n"                                            \
-    "User-Agent: Nacos-Java-Client:v2.10.0\r\n\r\n"
+    "User-Agent: Nacos-Java-Client:v2.10.0\r\n"
 
 ngx_nacos_udp_conn_t *ngx_nacos_open_udp(ngx_nacos_main_conf_t *ncf) {
     ngx_socket_t s;
@@ -757,6 +757,8 @@ static ngx_int_t ngx_nacos_create_req_buf(ngx_aux_nacos_conn_t *nc) {
     ngx_uint_t idx, len;
     ngx_nacos_key_t *key;
     ngx_nacos_udp_conn_t *uc;
+    ngx_str_t req;
+    u_char *p;
 
     uc = nc->uc;
 
@@ -773,5 +775,19 @@ static ngx_int_t ngx_nacos_create_req_buf(ngx_aux_nacos_conn_t *nc) {
                     &uc->ncf->udp_port, &uc->ncf->udp_ip, nc->peer.name) -
         nc->buf;
 
+    req.data = nc->buf;
+    req.len = nc->buf_len;
+
+    if (ngx_nacos_http_append_user_pass_header(uc->ncf, &req,
+                                               NC_BUF_SIZE - 2) != NGX_OK) {
+        ngx_log_error(NGX_LOG_INFO, uc->uc->log, 0,
+                      "http connection received json response");
+        return NGX_ERROR;
+    }
+    p = req.data + req.len;
+    *p = '\r';
+    *(p + 1) = '\n';
+    req.len += 2;
+    nc->buf_len = req.len;
     return NGX_OK;
 }

@@ -341,3 +341,189 @@ move_again:
     }
     return NGX_AGAIN;
 }
+
+#define NACOS_SUB_RESP_BUF_SIZE 65536
+
+ngx_int_t ngx_nacos_http_req_json_sync(
+    ngx_nacos_main_conf_t *mcf, ngx_str_t *req,
+    ngx_nacos_http_result_processor processor, void *ctx) {
+    ngx_uint_t tries;
+    ngx_addr_t *addrs;
+    ngx_fd_t s;
+    ngx_err_t err;
+    ngx_nacos_http_parse_t parser;
+    ngx_uint_t i, n;
+    size_t sd;
+    ssize_t rd;
+    void *re_tmp;
+    int domain;
+    addrs = mcf->server_list.elts;
+
+    tries = 0;
+    s = -1;
+
+    ngx_memzero(&parser, sizeof(parser));
+    parser.log = mcf->error_log;
+    parser.capacity = NACOS_SUB_RESP_BUF_SIZE;
+    parser.buf = (u_char *) ngx_alloc(parser.capacity, parser.log);
+    if (parser.buf == NULL) {
+        goto fetch_failed;
+    }
+
+retry:
+    if (++tries > mcf->server_list.nelts) {
+        goto fetch_failed;
+    }
+
+    n = mcf->server_list.nelts;
+    i = (mcf->cur_srv_index++) % n;
+    if (mcf->cur_srv_index >= n) {
+        mcf->cur_srv_index = 0;
+    }
+
+    if (parser.json_parser != NULL) {
+        yajl_tree_free_parser(parser.json_parser);
+        parser.json_parser = NULL;
+    }
+    if (s > 0) {
+        close(s);
+    }
+    switch (addrs[i].sockaddr->sa_family) {
+        case AF_INET6:
+            domain = PF_INET6;
+            break;
+        case AF_INET:
+            domain = PF_INET;
+            break;
+        case AF_UNIX:
+            domain = PF_UNIX;
+            break;
+        default:
+            ngx_log_error(NGX_LOG_WARN, parser.log, 0,
+                          "nacos connect() unknown domain type",
+                          &addrs[i].name);
+            goto retry;
+    }
+    s = ngx_socket(domain, SOCK_STREAM, 0);
+    if (s == -1) {
+        return NGX_ERROR;
+    }
+    if (connect(s, addrs[i].sockaddr, addrs[i].socklen) != 0) {
+        err = ngx_socket_errno;
+        ngx_log_error(NGX_LOG_WARN, parser.log, err,
+                      "nacos connect() to %V failed", &addrs[i].name);
+        goto retry;
+    }
+
+    sd = 0;
+    do {
+        rd = ngx_write_fd(s, req->data + sd, req->len - sd);
+        if (rd > 0) {
+            sd += rd;
+        } else if (rd == 0) {
+            ngx_log_error(NGX_LOG_WARN, parser.log, 0,
+                          "write request to %V failed, because of EOF occur",
+                          &addrs[i].name);
+            goto retry;
+        } else {
+            err = ngx_socket_errno;
+            if (err == NGX_EINTR) {
+                continue;
+            }
+            ngx_log_error(NGX_LOG_WARN, parser.log, err,
+                          "write request to %V failed", &addrs[i].name);
+            goto retry;
+        }
+    } while ((ngx_uint_t) sd < req->len);
+
+    do {
+        rd = ngx_read_fd(s, parser.buf + parser.limit,
+                         parser.capacity - parser.limit);
+        if (rd >= 0) {
+            parser.limit += rd;
+            parser.conn_eof = rd == 0;
+            rd = ngx_nacos_http_parse(&parser);
+            if (rd == NGX_ERROR) {
+                goto fetch_failed;
+            } else if (rd == NGX_OK) {
+                goto fetch_success;
+            } else {  // ngx_decline
+                if (parser.conn_eof) {
+                    // close premature
+                    goto retry;
+                }
+                rd = 1;
+            }
+        } else if (rd == -1) {
+            err = ngx_socket_errno;
+            ngx_log_error(NGX_LOG_WARN, parser.log, err,
+                          "read response from %V failed", &addrs[i].name);
+            goto retry;
+        }
+
+        if (parser.limit == parser.capacity) {
+            parser.capacity += NACOS_SUB_RESP_BUF_SIZE;
+            re_tmp = realloc(parser.buf, parser.capacity);
+            if (re_tmp == NULL) {
+                goto fetch_failed;
+            }
+            parser.buf = re_tmp;
+        }
+
+    } while (rd);
+
+fetch_success:
+    rd = processor(&parser, ctx);
+    if (rd == NGX_DECLINED) {
+        goto retry;
+    } else if (rd != NGX_ERROR) {
+        goto free;
+    }
+fetch_failed:
+    ngx_log_error(NGX_LOG_WARN, parser.log, 0,
+                  "sync request to nacos server failed");
+    rd = NGX_ERROR;
+
+free:
+    if (s > 0) {
+        close(s);
+    }
+    if (parser.json_parser != NULL) {
+        yajl_tree_free_parser(parser.json_parser);
+        parser.json_parser = NULL;
+    }
+    if (parser.buf != NULL) {
+        ngx_free(parser.buf);
+    }
+    return rd;
+}
+
+ngx_int_t ngx_nacos_http_append_user_pass_header(ngx_nacos_main_conf_t *mcf,
+                                                 ngx_str_t *req,
+                                                 size_t capacity) {
+    u_char *p;
+    p = req->data + req->len;
+    if (mcf->username.len > 0 && mcf->password.len > 0) {
+        // username: xxx\r\n
+        // password: xxx\r\n
+        if (mcf->username.len + mcf->password.len + req->len + 24 + 2 >=
+            capacity) {
+            return NGX_ERROR;
+        }
+        ngx_memcpy(p, "username: ", sizeof("username: ") - 1);
+        p += sizeof("username: ") - 1;
+        ngx_memcpy(p, mcf->username.data, mcf->username.len);
+        p += mcf->username.len;
+        *(p++) = '\r';
+        *(p++) = '\n';
+        ngx_memcpy(p, "password: ", sizeof("password: ") - 1);
+        p += sizeof("password: ") - 1;
+        ngx_memcpy(p, mcf->password.data, mcf->password.len);
+        p += mcf->password.len;
+        *(p++) = '\r';
+        *(p++) = '\n';
+
+        req->len = p - req->data;
+    }
+    return NGX_OK;
+}

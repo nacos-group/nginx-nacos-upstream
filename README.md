@@ -68,7 +68,6 @@ cd nginx-1.15.2 && patch -p1 < ../nginx-nacos-upstream/patch/nginx.patch
 ubuntu 下安装方式为
 
 ```bash
- sudo apt install libprotobuf-dev libprotobuf-c-dev
  sudo apt install build-essential libpcre3 libpcre3-dev zlib1g zlib1g-dev libssl-dev
  ```
 
@@ -112,6 +111,18 @@ nginx 自己的 ip。nginx 会把自己的 udp ip 和端口告诉 nacos, nacos �
 nginx 监听的 udp ip 和端口。原则上和 上边的 ip+port 一致。如果使用的是 docker。上面配置的则 可能是主机的 ip 和 映射的端口
 ```
 udp_bind 0.0.0.0:19999;
+```
+
+#### username （服务端没开启 auth 不需要）
+nacos 开启 auth 之后的 username. nacos.core.auth.server.identity.key=xxxx
+```
+username "xxxx";
+```
+
+#### password （服务端没开启 auth 不需要）
+nacos 开启 auth 之后的 password. nacos.core.auth.server.identity.value=xxxx
+```
+password "xxxx";
 ```
 
 #### error_log 
@@ -210,8 +221,9 @@ nacos 变量功能让 nginx 的灵活性大大增强了。
  * 支持集成 openresty 
 
 # License
-- Licensed under the Apache License, Version 2.0 Copyright (c) 2023-2024, Zhwaaaaaa
-- module/nacos/yaij Licensed under the ISC License, Copyright (c) 2007-2014, Lloyd Hilaiel
+- The project is licensed under the Apache License Version 2.0 except for yaij and pb,  Copyright (c) 2022-2024, Zhwaaaaaa
+- code in module/nacos/yaij is from [yajl](https://github.com/lloyd/yajl) Licensed under the ISC License, Copyright (c) 2007-2014, Lloyd Hilaiel
+- code in modules/nacos/pb  is from [nanopb](https://github.com/nanopb/nanopb) Licensed under the Zlib License, Copyright (c) 2011 Petteri Aimonen <jpa at nanopb.mail.kapsi.fi>
 
 # 致谢
 感谢 [JetBrains](https://www.jetbrains.com.cn) 公司赠送激活码，作者使用 [JetBrains Clion](https://www.jetbrains.com.cn/clion) 开发本项目过程中大大提升了开发效率。

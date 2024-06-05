@@ -8,170 +8,56 @@
 
 #define NACOS_ADDR_REQ_FMT                                    \
     "GET /nacos/v1/ns/instance/list?serviceName=%V%%40%%40%V" \
-    "&udpPort=%V&clientIP=%V&namespaceId=%V HTTP/1.0\r\n"     \
+    "&namespaceId=%V HTTP/1.0\r\n"                            \
     "Host: %V\r\n"                                            \
     "User-Agent: Nacos-Java-Client:v2.10.0\r\n"               \
-    "Connection: close\r\n\r\n"
+    "Connection: close\r\n"
 
 #define NACOS_CONFIG_REQ_FMT                    \
     "GET /nacos/v1/cs/configs?&group=%V&"       \
-    "dataId=%V&tenant=%V&show=all HTTP/1.0\r\n"          \
+    "dataId=%V&tenant=%V&show=all HTTP/1.0\r\n" \
     "Host: %V\r\n"                              \
     "User-Agent: Nacos-Java-Client:v2.10.0\r\n" \
-    "Connection: close\r\n\r\n"
+    "Connection: close\r\n"
 
 typedef char *(*parse_from_json_func)(ngx_nacos_resp_json_parser_t *parser);
 
-static ngx_int_t ngx_nacos_fetch_net_data(ngx_nacos_main_conf_t *mcf,
-                                          ngx_nacos_data_t *cache,
-                                          ngx_str_t *req,
-                                          parse_from_json_func fn);
+typedef struct {
+    ngx_nacos_data_t *cache;
+    parse_from_json_func fn;
+} ngx_nacos_sync_fetch_ctx;
 
-static ngx_int_t ngx_nacos_fetch_net_data(ngx_nacos_main_conf_t *mcf,
-                                          ngx_nacos_data_t *cache,
-                                          ngx_str_t *req,
-                                          parse_from_json_func fn) {
-    ngx_uint_t tries;
-    ngx_addr_t *addrs;
-    ngx_fd_t s;
-    ngx_pool_t *pool;
-    ngx_err_t err;
-    ngx_nacos_http_parse_t parser;
+static ngx_int_t ngx_nacos_fetch_net_data_processor(
+    ngx_nacos_http_parse_t *parser, void *ctx);
+
+static ngx_int_t ngx_nacos_fetch_net_data_processor(
+    ngx_nacos_http_parse_t *parser, void *ctx) {
     ngx_nacos_resp_json_parser_t resp_parser;
-    ngx_uint_t i, n;
-    size_t sd;
-    ssize_t rd;
+    ngx_nacos_sync_fetch_ctx *fetch_ctx;
+    ngx_nacos_data_t *cache;
 
-    pool = cache->pool;
-    addrs = mcf->server_list.elts;
+    fetch_ctx = ctx;
+    cache = fetch_ctx->cache;
 
-    tries = 0;
-    s = -1;
-
-    ngx_memzero(&parser, sizeof(parser));
-    parser.log = pool->log;
-    parser.buf = (u_char *) ngx_alloc(NACOS_SUB_RESP_BUF_SIZE, pool->log);
-    if (parser.buf == NULL) {
-        goto fetch_failed;
-    }
-
-retry:
-    if (++tries > mcf->server_list.nelts) {
-        goto fetch_failed;
-    }
-
-    n = mcf->server_list.nelts;
-    i = (mcf->cur_srv_index++) % n;
-    if (mcf->cur_srv_index >= n) {
-        mcf->cur_srv_index = 0;
-    }
-
-    if (parser.json_parser != NULL) {
-        yajl_tree_free_parser(parser.json_parser);
-        parser.json_parser = NULL;
-    }
-    if (s > 0) {
-        close(s);
-    }
-    s = ngx_socket(AF_INET, SOCK_STREAM, 0);
-    if (s == -1) {
-        return NGX_ERROR;
-    }
-
-    if (connect(s, addrs[i].sockaddr, addrs[i].socklen) != 0) {
-        err = ngx_socket_errno;
-        ngx_log_error(NGX_LOG_WARN, pool->log, err,
-                      "nacos connect() to %V failed", &addrs[i].name);
-        goto retry;
-    }
-
-    sd = 0;
-    do {
-        rd = ngx_write_fd(s, req->data + sd, req->len - sd);
-        if (rd > 0) {
-            sd += rd;
-        } else if (rd == 0) {
-            ngx_log_error(NGX_LOG_WARN, pool->log, 0,
-                          "write request to %V failed, because of EOF occur",
-                          &addrs[i].name);
-            goto retry;
-        } else {
-            err = ngx_socket_errno;
-            if (err == NGX_EINTR) {
-                continue;
-            }
-            ngx_log_error(NGX_LOG_WARN, pool->log, err,
-                          "write request to %V failed", &addrs[i].name);
-            goto retry;
-        }
-    } while ((ngx_uint_t) sd < req->len);
-
-    do {
-        rd = ngx_read_fd(s, parser.buf + parser.limit,
-                         NACOS_SUB_RESP_BUF_SIZE - parser.limit);
-        if (rd >= 0) {
-            parser.limit += rd;
-            parser.conn_eof = rd == 0;
-            rd = ngx_nacos_http_parse(&parser);
-            if (rd == NGX_ERROR) {
-                goto fetch_failed;
-            } else if (rd == NGX_OK) {
-                goto fetch_success;
-            } else {  // ngx_decline
-                if (parser.conn_eof) {
-                    // close premature
-                    goto retry;
-                }
-                rd = 1;
-            }
-        } else if (rd == -1) {
-            err = ngx_socket_errno;
-            ngx_log_error(NGX_LOG_WARN, pool->log, err,
-                          "read response from %V failed", &addrs[i].name);
-            goto retry;
-        }
-    } while (rd);
-
-fetch_success:
-
-    if (parser.json_parser != NULL &&
-        (resp_parser.json = yajl_tree_finish_get(parser.json_parser)) != NULL) {
+    if (parser->json_parser != NULL && (resp_parser.json = yajl_tree_finish_get(
+                                            parser->json_parser)) != NULL) {
         resp_parser.pool = cache->pool;
         resp_parser.prev_version = 0;
         resp_parser.current_version = 0;
         resp_parser.out_buf_len = 0;
         resp_parser.out_buf = NULL;
         resp_parser.log = cache->pool->log;
-        cache->adr = fn(&resp_parser);
+        cache->adr = fetch_ctx->fn(&resp_parser);
         if (cache->adr != NULL) {
             cache->version = resp_parser.current_version;
-            rd = NGX_OK;
-            goto free;
+            return NGX_OK;
         }
-    } else if (parser.real_body_len == 0) {
+    } else if (parser->real_body_len == 0 || parser->status == 404) {
         cache->adr = NULL;
         cache->version = 0;
-        rd = NGX_OK;
-        goto free;
+        return NGX_OK;
     }
-
-fetch_failed:
-    ngx_log_error(NGX_LOG_WARN, pool->log, 0,
-                  "fetch config data from nacos server failed");
-    rd = NGX_ERROR;
-
-free:
-    if (s > 0) {
-        close(s);
-    }
-    if (parser.json_parser != NULL) {
-        yajl_tree_free_parser(parser.json_parser);
-        parser.json_parser = NULL;
-    }
-    if (parser.buf != NULL) {
-        ngx_free(parser.buf);
-    }
-    return rd;
+    return NGX_ERROR;
 }
 
 ngx_int_t ngx_nacos_write_disk_data(ngx_nacos_main_conf_t *mcf,
@@ -342,28 +228,46 @@ ngx_int_t ngx_nacos_fetch_addrs_net_data(ngx_nacos_main_conf_t *mcf,
                                          ngx_nacos_data_t *cache) {
     ngx_str_t req_buf;
     u_char data[512];
+    ngx_nacos_sync_fetch_ctx ctx;
+    u_char *p;
 
     req_buf.data = data;
-    req_buf.len = ngx_snprintf(req_buf.data, NACOS_SUB_RESP_BUF_SIZE - 1,
-                               NACOS_ADDR_REQ_FMT, &cache->group,
-                               &cache->data_id, &mcf->udp_port, &mcf->udp_ip,
-                               &mcf->service_namespace, &mcf->server_host) -
-                  req_buf.data;
+    req_buf.len =
+        ngx_snprintf(req_buf.data, NACOS_SUB_RESP_BUF_SIZE - 4,
+                     NACOS_ADDR_REQ_FMT, &cache->group, &cache->data_id,
+                     &mcf->service_namespace, &mcf->server_host) -
+        req_buf.data;
 
+    if (ngx_nacos_http_append_user_pass_header(mcf, &req_buf, sizeof(data)) !=
+        NGX_OK) {
+        ngx_log_error(NGX_LOG_EMERG, cache->pool->log, 0,
+                      "nacos dataId or group is to long: GROUP|DATA_ID=%V|%V",
+                      &cache->group, &cache->data_id);
+        return NGX_ERROR;
+    }
+
+    p = req_buf.data + req_buf.len;
+    *p = '\r';
+    *(p + 1) = '\n';
+    req_buf.len += 2;
     if (req_buf.len >= NACOS_SUB_RESP_BUF_SIZE - 1) {
         ngx_log_error(NGX_LOG_EMERG, cache->pool->log, 0,
                       "nacos dataId or group is to long: GROUP|DATA_ID=%V|%V",
                       &cache->group, &cache->data_id);
         return NGX_ERROR;
     }
-    return ngx_nacos_fetch_net_data(mcf, cache, &req_buf,
-                                    ngx_nacos_parse_addrs_from_json);
+    ctx.cache = cache;
+    ctx.fn = ngx_nacos_parse_addrs_from_json;
+    return ngx_nacos_http_req_json_sync(
+        mcf, &req_buf, ngx_nacos_fetch_net_data_processor, &ctx);
 }
 
 ngx_int_t ngx_nacos_fetch_config_net_data(ngx_nacos_main_conf_t *mcf,
                                           ngx_nacos_data_t *cache) {
     ngx_str_t req_buf;
     u_char data[512];
+    ngx_nacos_sync_fetch_ctx ctx;
+    u_char *p;
 
     req_buf.data = data;
     req_buf.len =
@@ -378,9 +282,28 @@ ngx_int_t ngx_nacos_fetch_config_net_data(ngx_nacos_main_conf_t *mcf,
                       &cache->group, &cache->data_id);
         return NGX_ERROR;
     }
-    req_buf.data[req_buf.len] = 0;
-    return ngx_nacos_fetch_net_data(mcf, cache, &req_buf,
-                                    ngx_nacos_parse_config_from_json);
+    if (ngx_nacos_http_append_user_pass_header(mcf, &req_buf, sizeof(data)) !=
+        NGX_OK) {
+        ngx_log_error(NGX_LOG_EMERG, cache->pool->log, 0,
+                      "nacos dataId or group is to long: GROUP|DATA_ID=%V|%V",
+                      &cache->group, &cache->data_id);
+        return NGX_ERROR;
+    }
+
+    p = req_buf.data + req_buf.len;
+    *p = '\r';
+    *(p + 1) = '\n';
+    req_buf.len += 2;
+    if (req_buf.len >= NACOS_SUB_RESP_BUF_SIZE - 1) {
+        ngx_log_error(NGX_LOG_EMERG, cache->pool->log, 0,
+                      "nacos dataId or group is to long: GROUP|DATA_ID=%V|%V",
+                      &cache->group, &cache->data_id);
+        return NGX_ERROR;
+    }
+    ctx.cache = cache;
+    ctx.fn = ngx_nacos_parse_config_from_json;
+    return ngx_nacos_http_req_json_sync(
+        mcf, &req_buf, ngx_nacos_fetch_net_data_processor, &ctx);
 }
 
 char *ngx_nacos_parse_config_from_json(ngx_nacos_resp_json_parser_t *parser) {

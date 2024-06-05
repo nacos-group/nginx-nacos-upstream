@@ -2,7 +2,7 @@
 set -e
 
 rm -rf nginx
-rm -rf cmake-build-debug
+rm -rf objs
 
 curl -sSL https://nginx.org/download/nginx-1.20.2.tar.gz -o nginx.tar.gz
 
@@ -19,17 +19,19 @@ patch -p1 < ../patch/nginx.patch
   --add-module=../modules/nacos \
   --prefix=.. \
   --conf-path=conf/my.conf \
-  --error-log-path=cmake-build-debug/logs/error.log \
-  --pid-path=cmake-build-debug/logs/nginx.pid \
-  --lock-path=cmake-build-debug/logs/nginx.lock \
-  --http-log-path=cmake-build-debug/logs/access.log \
-  --http-client-body-temp-path=cmake-build-debug/client_body_temp \
-  --http-proxy-temp-path=cmake-build-debug/proxy_temp \
-  --http-fastcgi-temp-path=cmake-build-debug/fastcgi_temp \
-  --http-uwsgi-temp-path=cmake-build-debug/uwsgi_temp \
-  --http-scgi-temp-path=cmake-build-debug/scgi_temp
+  --error-log-path=objs/logs/error.log \
+  --pid-path=objs/logs/nginx.pid \
+  --lock-path=objs/logs/nginx.lock \
+  --http-log-path=objs/logs/access.log \
+  --http-client-body-temp-path=objs/client_body_temp \
+  --http-proxy-temp-path=objs/proxy_temp \
+  --http-fastcgi-temp-path=objs/fastcgi_temp \
+  --http-uwsgi-temp-path=objs/uwsgi_temp \
+  --http-scgi-temp-path=objs/scgi_temp \
+  --with-pcre=/opt/homebrew/Cellar/pcre \
+  --with-openssl=/opt/homebrew/Cellar/openssl\@3
 
 cd ..
 
-mkdir -p cmake-build-debug
+mkdir -p objs/logs
 rm -f nginx.tar.gz

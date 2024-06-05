@@ -45,6 +45,8 @@ typedef struct {
     ngx_str_t server_host;
     ngx_str_t config_tenant;
     ngx_str_t service_namespace;
+    ngx_str_t username;
+    ngx_str_t password;
     ngx_uint_t keys_hash_max_size;
     ngx_uint_t keys_bucket_size;
     ngx_uint_t config_keys_hash_max_size;

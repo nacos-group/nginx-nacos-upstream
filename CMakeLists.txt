@@ -163,7 +163,6 @@ if (NACOS)
     list(APPEND NGX_C_FILES modules/auxiliary/ngx_auxiliary_module.c)
     list(APPEND NGX_INC_DIR modules/nacos)
     list(APPEND NGX_LINK_DIR /usr/local/lib)
-    list(APPEND NGX_LIBS protobuf protobuf-c)
     list(APPEND NGX_C_FILES
             modules/nacos/ngx_nacos_module.c
             modules/nacos/ngx_nacos_aux.c
@@ -173,8 +172,7 @@ if (NACOS)
             modules/nacos/ngx_http_nacos_config_module.c
             modules/nacos/ngx_nacos_udp.c
             modules/nacos/ngx_nacos_grpc.c
-            modules/nacos/nacos_grpc_service.pb-c.c
-            modules/nacos/any.pb-c.c
+            modules/nacos/nacos_grpc_service.pb.c
             )
 
     list(APPEND NGX_C_FILES
@@ -187,6 +185,9 @@ if (NACOS)
             modules/nacos/yaij/yajl_parser.c
             modules/nacos/yaij/yajl_tree.c
             modules/nacos/yaij/yajl_version.c
+            modules/nacos/pb/pb_common.c
+            modules/nacos/pb/pb_decode.c
+            modules/nacos/pb/pb_encode.c
             )
 endif ()
 
@@ -202,7 +203,6 @@ elseif (CMAKE_HOST_SYSTEM_NAME MATCHES "Darwin")
             nginx/src/os/unix/ngx_darwin_init.c
             nginx/src/event/modules/ngx_kqueue_module.c
             nginx/src/os/unix/ngx_darwin_sendfile_chain.c)
-    list(APPEND NGX_INC_DIR /usr/local/Cellar/pcre/8.44/include)
 else ()
 endif ()
 

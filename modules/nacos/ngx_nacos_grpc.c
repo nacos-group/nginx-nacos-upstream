@@ -2,10 +2,12 @@
 // Created by eleme on 2023/2/17.
 //
 
-#include <nacos_grpc_service.pb-c.h>
+#include <nacos_grpc_service.pb.h>
 #include <ngx_http_v2.h>
 #include <ngx_nacos_data.h>
 #include <ngx_nacos_grpc.h>
+#include <pb/pb_decode.h>
+#include <pb/pb_encode.h>
 #include <yaij/api/yajl_gen.h>
 #include <yaij/api/yajl_tree.h>
 
@@ -298,6 +300,14 @@ static ngx_int_t ngx_nacos_grpc_do_subscribe_config_items(
 static ngx_int_t ngx_nacos_grpc_mark_subscribe_items(
     ngx_nacos_grpc_stream_t *st, ngx_int_t state);
 
+static bool ngx_nacos_grpc_pb_decode_str(pb_istream_t *stream,
+                                         const pb_field_t *field, void **arg);
+static bool ngx_nacos_grpc_pb_encode_str(pb_ostream_t *stream,
+                                         const pb_field_t *field,
+                                         void *const *arg);
+static bool ngx_nacos_grpc_encode_user_pass(pb_ostream_t *stream,
+                                            const pb_field_t *field,
+                                            void *const *arg);
 static ngx_inline void ngx_nacos_grpc_encode_frame_header(
     ngx_nacos_grpc_stream_t *st, u_char *b, u_char type, u_char flags,
     size_t len) {
@@ -313,17 +323,14 @@ static ngx_inline void ngx_nacos_grpc_encode_frame_header(
 }
 
 typedef struct {
-    const char *type;
+    ngx_str_t type;
     ngx_str_t json;
-
-    Metadata metadata;
     Payload payload;
-    Google__Protobuf__Any any;
     size_t encoded_len;
     u_char *buf;
 } ngx_nacos_grpc_payload_encode_t;
 
-static void ngx_nacos_grpc_encode_payload_init(
+static ngx_int_t ngx_nacos_grpc_encode_payload_init(
     ngx_nacos_grpc_payload_encode_t *en);
 
 static ngx_int_t ngx_nacos_grpc_encode_payload(
@@ -335,8 +342,8 @@ static ngx_nacos_grpc_buf_t *ngx_nacos_grpc_encode_data_msg(
 
 typedef struct {
     ngx_str_t input;
-    Payload *result;
-    char *type;
+    Payload result;
+    ngx_str_t type;
     ngx_str_t out_json;
     yajl_val json;
     enum ngx_nacos_payload_type payload_type;
@@ -1111,13 +1118,13 @@ static ngx_int_t ngx_nacos_grpc_parse_proto_msg(ngx_nacos_grpc_stream_t *st,
                 rc = st->stream_handler(st, de.payload_type, de.json);
                 if (rc != NGX_OK) {
                     ngx_log_error(NGX_LOG_WARN, st->conn->conn->log, 0,
-                                  "receive nacos proto msg [%s]:[%d]", de.type,
+                                  "receive nacos proto msg [%V]:[%d]", &de.type,
                                   rc);
                 }
             } else {
                 rc = st->stream_handler(st, NONE__END, NULL);
                 ngx_log_error(NGX_LOG_WARN, st->conn->conn->log, 0,
-                              "decode proto msg error", de.type, rc);
+                              "decode proto msg error:[%d]", rc);
             }
 
             if (rc != NGX_ERROR) {
@@ -1889,7 +1896,7 @@ static ngx_int_t ngx_nacos_grpc_send_subscribe_request(
         goto err;
     }
 
-    en.type = "ConnectionSetupRequest";
+    ngx_str_set(&en.type, "ConnectionSetupRequest");
     ngx_str_set(&en.json, SUB_SETUP_JSON);
     bbuf = ngx_nacos_grpc_encode_data_msg(st, &en, 0);
     if (bbuf == NULL) {
@@ -1980,7 +1987,7 @@ static ngx_int_t ngx_nacos_grpc_do_subscribe_service_items(
                          &key[idx]->group) -
             (u_char *) tmp;
 
-    en.type = "SubscribeServiceRequest";
+    ngx_str_set(&en.type, "SubscribeServiceRequest");
     en.json.len = b_len;
     en.json.data = tmp;
     bbuf = ngx_nacos_grpc_encode_data_msg(st, &en, 1);
@@ -2114,7 +2121,7 @@ static ngx_int_t ngx_nacos_grpc_do_subscribe_config_items(
         goto err;
     }
 
-    en.type = "ConfigBatchListenRequest";
+    ngx_str_set(&en.type, "ConfigBatchListenRequest");
     bbuf = ngx_nacos_grpc_encode_data_msg(st, &en, 1);
     if (bbuf == NULL) {
         goto err;
@@ -2176,32 +2183,84 @@ static ngx_int_t ngx_nacos_grpc_decode_ule128(u_char **pp, const u_char *last,
     return NGX_ERROR;
 }
 
-static void ngx_nacos_grpc_encode_payload_init(
-    ngx_nacos_grpc_payload_encode_t *en) {
-    google__protobuf__any__init(&en->any);
-    metadata__init(&en->metadata);
-    payload__init(&en->payload);
+static bool ngx_nacos_grpc_pb_encode_str(pb_ostream_t *stream,
+                                         const pb_field_t *field,
+                                         void *const *arg) {
+    ngx_str_t *s = *arg;
+    if (!pb_encode_tag_for_field(stream, field)) {
+        return false;
+    }
 
-    en->metadata.n_headers = 0;
-    en->metadata.headers = NULL;
-    en->metadata.type = (char *) en->type;
-    en->metadata.clientip = "";
-    en->payload.metadata = &en->metadata;
-    en->payload.body = &en->any;
-    en->any.value.data = en->json.data;
-    en->any.value.len = en->json.len;
-    en->buf = NULL;
-    en->encoded_len = payload__get_packed_size(&en->payload);
+    if (s == NULL || s->len == 0) {
+        return pb_encode_string(stream, NULL, 0);
+    }
+    return pb_encode_string(stream, s->data, s->len);
+}
+
+static bool ngx_nacos_grpc_encode_user_pass(pb_ostream_t *stream,
+                                            const pb_field_t *field,
+                                            void *const *arg) {
+    ngx_str_t key;
+    ngx_str_t value;
+    ngx_nacos_main_conf_t *mcf;
+    Metadata_HeadersEntry entry;
+
+    mcf = *arg;
+    entry.key.arg = &key;
+    entry.key.funcs.encode = ngx_nacos_grpc_pb_encode_str;
+    entry.value.arg = &value;
+    entry.value.funcs.encode = ngx_nacos_grpc_pb_encode_str;
+
+    ngx_str_set(&key, "username");
+    value = mcf->username;
+    if (!pb_encode_tag_for_field(stream, field)) {
+        return false;
+    }
+    if (!pb_encode_submessage(stream, Metadata_HeadersEntry_fields, &entry)) {
+        return false;
+    }
+
+    ngx_str_set(&key, "password");
+    value = mcf->password;
+    if (!pb_encode_tag_for_field(stream, field)) {
+        return false;
+    }
+    if (!pb_encode_submessage(stream, Metadata_HeadersEntry_fields, &entry)) {
+        return false;
+    }
+    return true;
+}
+
+static ngx_int_t ngx_nacos_grpc_encode_payload_init(
+    ngx_nacos_grpc_payload_encode_t *en) {
+    ngx_memzero(&en->payload, sizeof(en->payload));
+    en->payload.body.value.arg = &en->json;
+    en->payload.body.value.funcs.encode = ngx_nacos_grpc_pb_encode_str;
+    en->payload.metadata.type.arg = &en->type;
+    en->payload.metadata.type.funcs.encode = ngx_nacos_grpc_pb_encode_str;
+
+    if (grpc_ctx.ncf->username.len > 0 && grpc_ctx.ncf->password.len > 0) {
+        en->payload.metadata.headers.arg = grpc_ctx.ncf;
+        en->payload.metadata.headers.funcs.encode =
+            ngx_nacos_grpc_encode_user_pass;
+    }
+
+    return pb_get_encoded_size(&en->encoded_len, Payload_fields, &en->payload)
+               ? NGX_OK
+               : NGX_ERROR;
 }
 
 static ngx_int_t ngx_nacos_grpc_encode_payload(
     ngx_nacos_grpc_payload_encode_t *en) {
+    pb_ostream_t buffer;
     if (en->buf != NULL) {
-        if (en->encoded_len != payload__pack(&en->payload, en->buf)) {
-            return NGX_ERROR;
+        buffer = pb_ostream_from_buffer(en->buf, en->encoded_len);
+        if (pb_encode(&buffer, Payload_fields, &en->payload) &&
+            buffer.bytes_written == en->encoded_len) {
+            return NGX_OK;
         }
     }
-    return NGX_OK;
+    return NGX_ERROR;
 }
 
 static ngx_nacos_grpc_buf_t *ngx_nacos_grpc_encode_data_msg(
@@ -2212,7 +2271,11 @@ static ngx_nacos_grpc_buf_t *ngx_nacos_grpc_encode_data_msg(
     ngx_nacos_grpc_buf_t *buf;
 
     buf = NULL;
-    ngx_nacos_grpc_encode_payload_init(en);
+    if (ngx_nacos_grpc_encode_payload_init(en) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, st->conn->conn->log, 0,
+                      "protobuf payload init error");
+        goto err;
+    }
     b_len = en->encoded_len;
     if (b_len + 5 > st->conn->settings.max_frame_size) {
         // FIXME protobuf is too long. split to multi data frames
@@ -2442,41 +2505,37 @@ static ngx_int_t ngx_nacos_send_ping_frame(ngx_nacos_grpc_conn_t *gc) {
     return ngx_nacos_grpc_send_buf(buf, 0);
 }
 
+static bool ngx_nacos_grpc_pb_decode_str(pb_istream_t *stream,
+                                         const pb_field_t *field, void **arg) {
+    ngx_str_t *t = *arg;
+    t->len = stream->bytes_left;
+    t->data = stream->state;
+    stream->state = t->data + t->len;
+    stream->bytes_left -= t->len;
+    return true;
+}
+
 static ngx_int_t ngx_nacos_grpc_decode_payload(
     ngx_nacos_grpc_payload_decode_t *de) {
     size_t i, len;
+    pb_istream_t buffer;
 
-    de->type = "";
     de->json = NULL;
-    de->result = payload__unpack(NULL, de->input.len, de->input.data);
-    if (de->result == NULL) {
-        return NGX_ERROR;
-    }
-    if (de->result->metadata == NULL) {
-        payload__free_unpacked(de->result, NULL);
-        de->result = NULL;
-        return NGX_ERROR;
-    }
-    if (de->result->metadata->type == NULL) {
-        payload__free_unpacked(de->result, NULL);
-        de->result = NULL;
-        return NGX_ERROR;
-    }
-    if (de->result->body == NULL) {
-        payload__free_unpacked(de->result, NULL);
-        de->result = NULL;
-        return NGX_ERROR;
-    }
-    de->type = de->result->metadata->type;
-    de->out_json.data = de->result->body->value.data;
-    de->out_json.len = de->result->body->value.len;
+    ngx_memzero(&de->result, sizeof(de->result));
+    de->result.body.value.funcs.decode = ngx_nacos_grpc_pb_decode_str;
+    de->result.body.value.arg = &de->out_json;
+    de->result.metadata.type.funcs.decode = ngx_nacos_grpc_pb_decode_str;
+    de->result.metadata.type.arg = &de->type;
+
+    buffer = pb_istream_from_buffer(de->input.data, de->input.len);
+    pb_decode(&buffer, Payload_fields, &de->result);
     de->payload_type = 0;
 
     for (i = 0,
         len = sizeof(payload_type_mapping) / sizeof(payload_type_mapping[0]);
          i < len; ++i) {
-        if (strlen(de->type) == payload_type_mapping[i].type_name.len &&
-            ngx_strncmp(de->type, payload_type_mapping[i].type_name.data,
+        if (de->type.len == payload_type_mapping[i].type_name.len &&
+            ngx_strncmp(de->type.data, payload_type_mapping[i].type_name.data,
                         payload_type_mapping[i].type_name.len) == 0) {
             de->payload_type = payload_type_mapping[i].payload_type;
             break;
@@ -2499,10 +2558,6 @@ static void ngx_nacos_grpc_decode_payload_destroy(
     if (de->json != NULL) {
         yajl_tree_free(de->json);
         de->json = NULL;
-    }
-    if (de->result != NULL) {
-        payload__free_unpacked(de->result, NULL);
-        de->result = NULL;
     }
 }
 
@@ -2544,7 +2599,8 @@ static ngx_int_t ngx_nacos_grpc_send_server_push_resp(
         return NGX_ERROR;
     }
 
-    en.type = resp_type;
+    en.type.data = (u_char *) resp_type;
+    en.type.len = strlen(resp_type);
     en.json.len = ngx_snprintf(tmp, sizeof(tmp), NACOS_COMMON_RESPONSE_FMT,
                                YAJL_GET_STRING(req_id)) -
                   tmp;
@@ -2724,7 +2780,7 @@ static ngx_int_t ngx_nacos_grpc_send_config_query_request(
                          &key->group, &ncf->config_tenant) -
             (u_char *) tmp;
 
-    en.type = "ConfigQueryRequest";
+    ngx_str_set(&en.type, "ConfigQueryRequest");
     en.json.len = b_len;
     en.json.data = tmp;
     bbuf = ngx_nacos_grpc_encode_data_msg(st, &en, 1);

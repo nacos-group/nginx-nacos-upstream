@@ -64,8 +64,7 @@ tar zxvf tar zxvf nginx-1.15.2.tar.gz
 ```bash
 cd nginx-1.15.2 && patch -p1 < ../nginx-nacos-upstream/patch/nginx.patch
 ```
-- 由于使用了 grpc 连接 nacos，所以除了需要安装 nginx 本身的依赖以，外还需要安装 protobuf 和 protobuf-c 库。
-ubuntu 下安装方式为
+- build nginx. ubuntu 下安装方式为
 
 ```bash
  sudo apt install build-essential libpcre3 libpcre3-dev zlib1g zlib1g-dev libssl-dev

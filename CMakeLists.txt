@@ -3,8 +3,8 @@ project(nginx_nacos C)
 
 set(CMAKE_C_STANDARD 90)
 
-set(CMAKE_C_FLAGS "-W -Wall -Wpointer-arith -Wno-unused-parameter -Werror=uninitialized -Werror -Wreturn-type -Wno-deprecated-declarations -Wconditional-uninitialized")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -W -Wall -Wno-unused-parameter -Werror=uninitialized -Wconditional-uninitialized")
+set(CMAKE_C_FLAGS "-W -Wall -Wpointer-arith -Wno-unused-parameter -Werror=uninitialized -Werror -Wreturn-type -Wno-deprecated-declarations")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -W -Wall -Wno-unused-parameter -Werror=uninitialized")
 
 set(NGX_C_FILES nginx/src/core/nginx.c
         nginx/src/core/ngx_log.c
@@ -158,6 +158,8 @@ if (OPENSSL)
 
 endif ()
 
+set(BACKUP_PROTO modules/nacos/backup.pb.c)
+
 if (NACOS)
     list(APPEND NGX_INC_DIR modules/auxiliary /usr/local/include)
     list(APPEND NGX_C_FILES modules/auxiliary/ngx_auxiliary_module.c)
@@ -173,6 +175,7 @@ if (NACOS)
             modules/nacos/ngx_nacos_udp.c
             modules/nacos/ngx_nacos_grpc.c
             modules/nacos/nacos_grpc_service.pb.c
+            ${BACKUP_PROTO}
             )
 
     list(APPEND NGX_C_FILES

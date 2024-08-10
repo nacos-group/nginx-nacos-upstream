@@ -1,8 +1,11 @@
 //
 // Created by dear on 22-5-30.
 //
+#include <backup.pb.h>
 #include <ngx_nacos_data.h>
 #include <ngx_nacos_http_parse.h>
+#include <pb/pb_decode.h>
+#include <pb/pb_encode.h>
 
 #define NACOS_SUB_RESP_BUF_SIZE (64 * 1024)
 
@@ -29,7 +32,9 @@ typedef struct {
 
 static ngx_int_t ngx_nacos_fetch_net_data_processor(
     ngx_nacos_http_parse_t *parser, void *ctx);
-
+static bool ngx_nacos_data_pb_encode_str(pb_ostream_t *stream,
+                                         const pb_field_t *field,
+                                         void *const *arg);
 static ngx_int_t ngx_nacos_fetch_net_data_processor(
     ngx_nacos_http_parse_t *parser, void *ctx) {
     ngx_nacos_resp_json_parser_t resp_parser;
@@ -129,7 +134,7 @@ ngx_int_t ngx_nacos_fetch_disk_data(ngx_nacos_main_conf_t *mcf,
     ngx_fd_t fd;
     ngx_str_t filename;
     ngx_file_info_t fi;
-    size_t file_size, fsize;
+    uint64_t file_size, fsize;
     ngx_err_t err;
     ssize_t rd;
     char *buf;
@@ -206,7 +211,7 @@ ngx_int_t ngx_nacos_fetch_disk_data(ngx_nacos_main_conf_t *mcf,
         fsize += rd;
     } while (fsize < file_size);
 
-    fsize = *(size_t *) buf;
+    fsize = *(uint64_t *) buf;
     if (fsize != file_size) {
         ngx_log_error(NGX_LOG_EMERG, pool->log, 0,
                       "nacos %s cache file \"%V\" length not match",
@@ -214,7 +219,7 @@ ngx_int_t ngx_nacos_fetch_disk_data(ngx_nacos_main_conf_t *mcf,
         goto err_read;
     }
 
-    cache->version = *(ngx_uint_t *) (buf + sizeof(size_t));
+    cache->version = *(uint64_t *) (buf + sizeof(uint64_t));
     cache->adr = buf;
     return NGX_OK;
 
@@ -306,6 +311,20 @@ ngx_int_t ngx_nacos_fetch_config_net_data(ngx_nacos_main_conf_t *mcf,
         mcf, &req_buf, ngx_nacos_fetch_net_data_processor, &ctx);
 }
 
+static bool ngx_nacos_data_pb_encode_str(pb_ostream_t *stream,
+                                         const pb_field_t *field,
+                                         void *const *arg) {
+    ngx_str_t *s = *arg;
+    if (!pb_encode_tag_for_field(stream, field)) {
+        return false;
+    }
+
+    if (s == NULL || s->len == 0) {
+        return pb_encode_string(stream, NULL, 0);
+    }
+    return pb_encode_string(stream, s->data, s->len);
+}
+
 char *ngx_nacos_parse_config_from_json(ngx_nacos_resp_json_parser_t *parser) {
     yajl_val json, ref;
     ngx_log_t *log;
@@ -380,15 +399,42 @@ char *ngx_nacos_parse_config_from_json(ngx_nacos_resp_json_parser_t *parser) {
     return result;
 }
 
+static bool ngx_nacos_encode_hosts(pb_ostream_t *stream,
+                                   const pb_field_t *field, void *const *arg) {
+    ngx_array_t *addrs = *arg;
+    ngx_nacos_service_addr_t *addr;
+    ngx_uint_t i, n;
+    Instance instance;
+
+    addr = addrs->elts;
+    n = addrs->nelts;
+    for (i = 0; i < n; i++) {
+        if (!pb_encode_tag_for_field(stream, field)) {
+            return false;
+        }
+
+        instance.host.arg = &addr[i].host;
+        instance.host.funcs.encode = ngx_nacos_data_pb_encode_str;
+        instance.port = addr->port;
+        instance.weight = addr->weight;
+        if (!pb_encode_submessage(stream, Instance_fields, &instance)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 char *ngx_nacos_parse_addrs_from_json(ngx_nacos_resp_json_parser_t *parser) {
-    yajl_val json, arr, item, ip, port, ref;
+    yajl_val json, arr, item, ip, port, ref, weight, enable, healthy;
     size_t i, n;
     int is;
-    ngx_uint_t j, m;
-    ngx_url_t u;
     ngx_log_t *log;
     char *ts, *c;
-    static char buf[65536];
+    Service service;
+    ngx_nacos_service_addrs_t addrs;
+    ngx_nacos_service_addr_t *addr;
+    double w;
+    pb_ostream_t buffer;
 
     json = parser->json;
     log = parser->log;
@@ -412,8 +458,12 @@ char *ngx_nacos_parse_addrs_from_json(ngx_nacos_resp_json_parser_t *parser) {
     }
 
     n = arr->u.array.len;
-    c = buf + sizeof(size_t) + sizeof(ngx_uint_t) * 2;
-    m = 0;
+
+    if (ngx_array_init(&addrs.addrs, parser->pool, n,
+                       sizeof(ngx_nacos_service_addr_t)) != NGX_OK) {
+        return NULL;
+    }
+
     for (i = 0; i < n; ++i) {
         item = arr->u.array.values[i];
         if (!YAJL_IS_OBJECT(item)) {
@@ -421,6 +471,12 @@ char *ngx_nacos_parse_addrs_from_json(ngx_nacos_resp_json_parser_t *parser) {
                           "nacos response json hosts item is not object");
             return NULL;
         }
+        enable = yajl_tree_get_field(item, "enabled", yajl_t_true);
+        healthy = yajl_tree_get_field(item, "healthy", yajl_t_true);
+        if (!enable || !healthy) {
+            continue;
+        }
+
         ip = yajl_tree_get_field(item, "ip", yajl_t_string);
         if (!ip) {
             ngx_log_error(NGX_LOG_WARN, log, 0,
@@ -436,103 +492,144 @@ char *ngx_nacos_parse_addrs_from_json(ngx_nacos_resp_json_parser_t *parser) {
         ts = YAJL_GET_STRING(ip);
         is = (int) YAJL_GET_INTEGER(port);
 
+        weight = yajl_tree_get_field(item, "weight", yajl_t_number);
+        if (!weight) {
+            ngx_log_error(NGX_LOG_WARN, log, 0,
+                          "nacos response json hosts weight is not number");
+            return NULL;
+        }
+        w = YAJL_GET_DOUBLE(weight);
+
         if (is <= 0 || is > 65535) {
             ngx_log_error(NGX_LOG_WARN, log, 0,
                           "nacos response json hosts port is invalid: %d", is);
             return NULL;
         }
-
-        memset(&u, 0, sizeof(u));
-        u.url.len = strlen(ts);
-        u.url.data = (u_char *) ts;
-        u.default_port = is;
-        if (ngx_parse_url(parser->pool, &u) != NGX_OK) {
-            if (u.err) {
-                ngx_log_error(NGX_LOG_EMERG, log, 0,
-                              "%s in nacos server_list \"%V\"", u.err, &u.url);
-            }
+        addr = ngx_array_push(&addrs.addrs);
+        if (addr == NULL) {
             return NULL;
         }
-        for (j = 0; j < u.naddrs; ++j) {
-            *(ngx_uint_t *) c = u.addrs[j].name.len;
-            c += sizeof(ngx_uint_t);
-            memcpy(c, u.addrs[j].name.data, u.addrs[j].name.len);
-            c += u.addrs[j].name.len;
-            *(ngx_uint_t *) c = u.addrs[j].socklen;
-            c += sizeof(ngx_uint_t);
-            memcpy(c, u.addrs[j].sockaddr, u.addrs[j].socklen);
-            c += u.addrs[j].socklen;
-        }
-        m += u.naddrs;
+        addr->host.data = (u_char *) ts;
+        addr->host.len = strlen(ts);
+        addr->port = is;
+        addr->weight = (int32_t) w * 100;
     }
 
-    n = (int) (c - (char *) buf);
-    c = buf;
-    *(size_t *) c = n;  // byte len
-    c += sizeof(size_t);
-    *(ngx_uint_t *) c = parser->current_version;  // addr num
-    c += sizeof(ngx_uint_t);
-    *(ngx_uint_t *) c = m;  // addr num
-    if (parser->out_buf != NULL && parser->out_buf_len >= n) {
-        c = parser->out_buf;
-    } else {
-        c = ngx_palloc(parser->pool, n);
-        if (c == NULL) {
-            return NULL;
-        }
+    addrs.version = parser->current_version;
+    service.version = addrs.version;
+    service.instances.arg = &addrs.addrs;
+    service.instances.funcs.encode = ngx_nacos_encode_hosts;
+
+    if (!pb_get_encoded_size(&n, Service_fields, &service)) {
+        return NULL;
+    }
+    c = ngx_palloc(parser->pool, n + sizeof(uint64_t) * 2);
+    if (c == NULL) {
+        return NULL;
     }
 
-    memcpy(c, buf, n);
+    buffer = pb_ostream_from_buffer((u_char *) c + sizeof(uint64_t) * 2, n);
+    if (!pb_encode(&buffer, Service_fields, &service) ||
+        buffer.bytes_written != n) {
+        return NULL;
+    }
+
+    *((uint64_t *) c) = n + sizeof(uint64_t) * 2;
+    *((uint64_t *) (c + sizeof(uint64_t))) = addrs.version;
     return c;
 }
 
-ngx_int_t ngx_nacos_deep_copy_addrs(char *src, ngx_array_t *dist) {
-    ngx_uint_t i, n;
-    char *c;
-    ngx_addr_t *v;
+struct ngx_pb_decode_ctx_t {
+    void *arg;
+    ngx_pool_t *pool;
+};
 
-    if (src == NULL) {
-        return NGX_DECLINED;
+static bool ngx_nacos_pb_decode_str(pb_istream_t *stream,
+                                    const pb_field_t *field, void **arg) {
+    struct ngx_pb_decode_ctx_t *ctx;
+    ngx_str_t *t;
+
+    ctx = *arg;
+    t = ctx->arg;
+    t->len = stream->bytes_left;
+    t->data = ngx_palloc(ctx->pool, t->len);
+    if (t->data == NULL) {
+        return false;
+    }
+    ngx_memcpy(t->data, stream->state, t->len);
+    stream->state = (char *) stream->state + t->len;
+    stream->bytes_left -= t->len;
+    return true;
+}
+
+static bool ngx_nacos_decode_instances(pb_istream_t *stream,
+                                       const pb_field_t *field, void **arg) {
+    struct ngx_pb_decode_ctx_t *ctx;
+    ngx_array_t *addrs;
+    ngx_nacos_service_addr_t *addr;
+    Instance instance;
+
+    ctx = *arg;
+    addrs = ctx->arg;
+    instance.host.arg = ctx;
+    instance.host.funcs.decode = ngx_nacos_pb_decode_str;
+
+    addr = ngx_array_push(addrs);
+    if (addr == NULL) {
+        return false;
+    }
+    instance.port = 0;
+    instance.weight = 0;
+    ctx->arg = &addr->host;
+    if (!pb_decode(stream, Instance_fields, &instance)) {
+        return false;
+    }
+    addr->weight = instance.weight;
+    addr->port = instance.port;
+    ctx->arg = addrs;
+    return true;
+}
+
+ngx_int_t ngx_nacos_deep_copy_addrs(char *src,
+                                    ngx_nacos_service_addrs_t *dist) {
+    uint64_t len, version;
+    pb_istream_t buffer;
+    Service service;
+    struct ngx_pb_decode_ctx_t ctx;
+    ctx.pool = dist->addrs.pool;
+    ctx.arg = &dist->addrs;
+
+    len = *(uint64_t *) src;
+    version = *(uint64_t *) (src + sizeof(uint64_t));
+
+    service.version = 0;
+    service.instances.arg = &ctx;
+    service.instances.funcs.decode = ngx_nacos_decode_instances;
+
+    buffer = pb_istream_from_buffer((u_char *) src + 2 * sizeof(uint64_t),
+                                    len - 2 * sizeof(uint64_t));
+    if (!pb_decode(&buffer, Service_fields, &service)) {
+        ngx_log_error(NGX_LOG_WARN, dist->addrs.pool->log, 0,
+                      "nacos decode service error");
+        return NGX_ERROR;
+    }
+    if (version != service.version) {
+        ngx_log_error(NGX_LOG_WARN, dist->addrs.pool->log, 0,
+                      "nacos decode service version not match");
+        return NGX_ERROR;
     }
 
-    c = src;
-    c += sizeof(n) + sizeof(ngx_uint_t);  // bytes len + version len
-    n = *(ngx_uint_t *) c;
-    c += sizeof(n);
-    for (i = 0; i < n; ++i) {
-        v = ngx_array_push(dist);
-        if (v == NULL) {
-            return NGX_ERROR;
-        }
-        v->name.len = *(ngx_uint_t *) c;
-        c += sizeof(n);
-        v->name.data = ngx_palloc(dist->pool, v->name.len);
-        if (v->name.data == NULL) {
-            return NGX_ERROR;
-        }
-        memcpy(v->name.data, c, v->name.len);
-        c += v->name.len;
-
-        v->socklen = *(ngx_uint_t *) c;
-        c += sizeof(n);
-        v->sockaddr = ngx_palloc(dist->pool, v->socklen);
-        if (v->sockaddr == NULL) {
-            return NGX_ERROR;
-        }
-        memcpy(v->sockaddr, c, v->socklen);
-        c += v->socklen;
-    }
     return NGX_OK;
 }
 
 ngx_int_t ngx_nacos_update_shm(ngx_nacos_main_conf_t *mcf, ngx_nacos_key_t *key,
                                const char *adr, ngx_log_t *log) {
-    size_t len;
-    ngx_uint_t version;
+    uint64_t len;
+    uint64_t version;
     char *oldAddr, *nAddr;
 
-    len = *(size_t *) adr;
-    version = *(ngx_uint_t *) (adr + sizeof(size_t));
+    len = *(uint64_t *) adr;
+    version = *(uint64_t *) (adr + sizeof(size_t));
 
     if (mcf->sh == NULL) {
         ngx_log_error(NGX_LOG_EMERG, log, 0, "nacos no shared mem  %V@@%V",

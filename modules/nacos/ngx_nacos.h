@@ -64,6 +64,15 @@ typedef struct {
     ngx_hash_t *config_key_hash;
     ngx_addr_t udp_addr;
 } ngx_nacos_main_conf_t;
+typedef struct {
+    ngx_str_t host;
+    int32_t port;
+    int32_t weight;
+} ngx_nacos_service_addr_t;
+typedef struct {
+    uint64_t version;
+    ngx_array_t addrs;  // ngx_nacos_service_addr_t
+} ngx_nacos_service_addrs_t;
 
 ngx_nacos_main_conf_t *ngx_nacos_get_main_conf(ngx_conf_t *cf);
 
@@ -77,7 +86,7 @@ void ngx_nacos_aux_free_addr(ngx_peer_connection_t *pc, void *data,
 ngx_int_t ngx_nacos_aux_get_addr(ngx_peer_connection_t *pc, void *data);
 
 ngx_int_t nax_nacos_get_addrs(ngx_nacos_key_t *key, ngx_uint_t *version,
-                              ngx_array_t *out_addrs);
+                              ngx_nacos_service_addrs_t *out_addrs);
 
 typedef struct {
     ngx_pool_t *pool;

@@ -605,7 +605,7 @@ static ngx_int_t ngx_nacos_init_key_zone(ngx_shm_zone_t *zone, void *data) {
 }
 
 ngx_int_t nax_nacos_get_addrs(ngx_nacos_key_t *key, ngx_uint_t *version,
-                              ngx_array_t *out_addrs) {
+                              ngx_nacos_service_addrs_t *out_addrs) {
     ngx_uint_t old_ver, new_ver;
     ngx_int_t rc;
     ngx_nacos_key_ctx_t *ctx = key->ctx;

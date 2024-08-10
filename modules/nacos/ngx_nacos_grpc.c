@@ -350,7 +350,7 @@ typedef struct {
 } ngx_nacos_grpc_payload_decode_t;
 
 static ngx_int_t ngx_nacos_grpc_decode_payload(
-    ngx_nacos_grpc_payload_decode_t *de);
+    ngx_nacos_grpc_stream_t *st, ngx_nacos_grpc_payload_decode_t *de);
 
 static void ngx_nacos_grpc_decode_payload_destroy(
     ngx_nacos_grpc_payload_decode_t *de);
@@ -1112,14 +1112,15 @@ static ngx_int_t ngx_nacos_grpc_parse_proto_msg(ngx_nacos_grpc_stream_t *st,
         if (st->resp_grpc_encode && st->stream_handler) {
             de.input = *proto_msg;
 
-            rc = ngx_nacos_grpc_decode_payload(&de);
+            rc = ngx_nacos_grpc_decode_payload(st, &de);
 
             if (rc == NGX_OK) {
                 rc = st->stream_handler(st, de.payload_type, de.json);
                 if (rc != NGX_OK) {
-                    ngx_log_error(NGX_LOG_WARN, st->conn->conn->log, 0,
-                                  "receive nacos proto msg [%V]:[%d]", &de.type,
-                                  rc);
+                    ngx_log_error(
+                        NGX_LOG_WARN, st->conn->conn->log, 0,
+                        "receive nacos proto msg [%V]:[%d] when receiving: %V",
+                        &de.type, rc, &de.out_json);
                 }
             } else {
                 rc = st->stream_handler(st, NONE__END, NULL);
@@ -2516,7 +2517,7 @@ static bool ngx_nacos_grpc_pb_decode_str(pb_istream_t *stream,
 }
 
 static ngx_int_t ngx_nacos_grpc_decode_payload(
-    ngx_nacos_grpc_payload_decode_t *de) {
+    ngx_nacos_grpc_stream_t *st, ngx_nacos_grpc_payload_decode_t *de) {
     size_t i, len;
     pb_istream_t buffer;
 
@@ -2528,7 +2529,11 @@ static ngx_int_t ngx_nacos_grpc_decode_payload(
     de->result.metadata.type.arg = &de->type;
 
     buffer = pb_istream_from_buffer(de->input.data, de->input.len);
-    pb_decode(&buffer, Payload_fields, &de->result);
+    if (!pb_decode(&buffer, Payload_fields, &de->result)) {
+        ngx_log_error_core(NGX_ERROR_ERR, st->conn->conn->log, 0,
+                           "decode protobuf error:%s", buffer.errmsg);
+        return NGX_ERROR;
+    }
     de->payload_type = 0;
 
     for (i = 0,
@@ -2698,6 +2703,7 @@ static ngx_int_t ngx_nacos_grpc_config_change_notified(
     ngx_int_t rc;
     u_char tmp[512];
     size_t len;
+    char *name;
 
     rc = NGX_ERROR;
 
@@ -2713,12 +2719,13 @@ static ngx_int_t ngx_nacos_grpc_config_change_notified(
         goto end;
     }
     t_name = yajl_tree_get_field(root, "tenant", yajl_t_string);
-
+    name = YAJL_GET_STRING(t_name);
+    if (name == NULL) {
+        name = "";
+    }
     if (grpc_ctx.ncf->config_tenant.len > 0 &&
-        (ngx_strlen(YAJL_GET_STRING(t_name)) !=
-             grpc_ctx.ncf->config_tenant.len ||
-         ngx_strcmp(grpc_ctx.ncf->config_tenant.data,
-                    YAJL_GET_STRING(t_name)) != 0)) {
+        (ngx_strlen(name) != grpc_ctx.ncf->config_tenant.len ||
+         ngx_strcmp(grpc_ctx.ncf->config_tenant.data, name) != 0)) {
         ngx_log_error(NGX_LOG_WARN, gc->conn->log, 0,
                       "nacos server sent config change with unknown tenant:%s",
                       YAJL_GET_STRING(t_name));

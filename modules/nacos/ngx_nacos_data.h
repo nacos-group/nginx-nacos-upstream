@@ -42,11 +42,10 @@ ngx_int_t ngx_nacos_fetch_addrs_net_data(ngx_nacos_main_conf_t *mcf,
 ngx_int_t ngx_nacos_fetch_config_net_data(ngx_nacos_main_conf_t *mcf,
                                           ngx_nacos_data_t *cache);
 
-ngx_int_t ngx_nacos_deep_copy_addrs(char *src, ngx_array_t *dist);
+ngx_int_t ngx_nacos_deep_copy_addrs(char *src, ngx_nacos_service_addrs_t *dist);
 
-ngx_int_t ngx_nacos_update_shm(ngx_nacos_main_conf_t *mcf,
-                                 ngx_nacos_key_t *key, const char *adr,
-                                 ngx_log_t *log);
+ngx_int_t ngx_nacos_update_shm(ngx_nacos_main_conf_t *mcf, ngx_nacos_key_t *key,
+                               const char *adr, ngx_log_t *log);
 
 ngx_nacos_key_t *ngx_nacos_hash_find_key(ngx_hash_t *key_hash, u_char *k);
 

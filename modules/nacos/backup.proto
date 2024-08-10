@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+message Config {
+    uint64 version = 1;
+    string content = 2;
+    string md5  = 3;
+}
+
+message Instance {
+   string host = 1;
+   int32 port = 2;
+   int32 weight = 3;
+}
+
+message Service {
+   uint64 version = 1;
+   repeated Instance instances = 2;
+}

@@ -4,10 +4,12 @@ set -e
 rm -rf nginx
 rm -rf objs
 
-curl -sSL https://nginx.org/download/nginx-1.20.2.tar.gz -o nginx.tar.gz
+nginx_version=1.20.2
+curl -sSL https://nginx.org/download/nginx-${nginx_version}.tar.gz -o nginx.tar.gz
 
 tar zxvf nginx.tar.gz
-mv nginx-1.20.2 nginx
+mv nginx-${nginx_version} nginx
+cp -r modules nginx/modules
 cd nginx
 patch -p1 < ../patch/nginx.patch
 
@@ -15,8 +17,8 @@ patch -p1 < ../patch/nginx.patch
 ./configure \
   --with-http_v2_module \
   --with-http_ssl_module \
-  --add-module=../modules/auxiliary \
-  --add-module=../modules/nacos \
+  --add-module=modules/auxiliary \
+  --add-module=modules/nacos \
   --prefix=.. \
   --conf-path=conf/my.conf \
   --error-log-path=objs/logs/error.log \
@@ -27,9 +29,7 @@ patch -p1 < ../patch/nginx.patch
   --http-proxy-temp-path=objs/proxy_temp \
   --http-fastcgi-temp-path=objs/fastcgi_temp \
   --http-uwsgi-temp-path=objs/uwsgi_temp \
-  --http-scgi-temp-path=objs/scgi_temp \
-  --with-pcre=/opt/homebrew/Cellar/pcre \
-  --with-openssl=/opt/homebrew/Cellar/openssl\@3
+  --http-scgi-temp-path=objs/scgi_temp
 
 cd ..
 

@@ -137,6 +137,7 @@ ngx_nacos_udp_conn_t *ngx_nacos_open_udp(ngx_nacos_main_conf_t *ncf) {
             goto failed;
         }
     }
+#ifdef NGX_USE_IOCP_EVENT
     if (ngx_event_flags & NGX_USE_IOCP_EVENT) {
         if (ngx_blocking(s) == -1) {
             ngx_log_error(NGX_LOG_ALERT, log, ngx_socket_errno,
@@ -147,6 +148,7 @@ ngx_nacos_udp_conn_t *ngx_nacos_open_udp(ngx_nacos_main_conf_t *ncf) {
         wev->ready = 1;
         return NGX_OK;
     }
+#endif
 
     if (ngx_event_flags & NGX_USE_CLEAR_EVENT) {
         event = NGX_CLEAR_EVENT;
